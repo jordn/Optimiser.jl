@@ -1,28 +1,17 @@
-using Formatting
-using PyPlot
-using Optim
-
 const ϕ = 0.5 * (1.0 + sqrt(5.0))
-const global disp_progress = true
-f(x) = x.^4 .* cos(1./x) + 2x.^4
-g(x) = 4x.^3 .* cos(1./x) + x.^2 .* sin(1./x) + 8x.^3
-# f(x) = x.^2-10x
-# g(x) = 2x-10
-x = collect(-0.1:0.000001881:0.1)
-plot(x,f(x))
-
-# plot(-6:0.1:6, f(-6:0.1:6))
-
+const global disp_progress = false
 
 function print_progress(xa, xb, xc, fa, fb, fc, evals)
   if disp_progress
-    const fmt = "{}: ({: 2.4f}, {: 2.4f}, {: 2.4f}) = ({: 2.3f}, {: 2.3f}, {: 2.3f})\n"
+    const fmt = ">{}: ({: 2.4f}, {: 2.4f}, {: 2.4f}) = ({: 2.3f}, {: 2.3f}, {: 2.3f})\n"
     # if xa > xc
       # printfmt(fmt, evals, xc, xb, xa, fc, fb, fa)
       # @printf "%d: (% 2.2f, % 2.2f, % 2.2f) = (% 2.3f, % 2.3f, % 2.3f)\n" evals xc xb xa fc fb fa
     # else
       # @printf "%d: (% 2.2f, % 2.2f, % 2.2f) = (% 2.3f, % 2.3f, % 2.3f)\n" evals xa xb xc fa fb fc
       printfmt(fmt, evals, xa, xb, xc, fa, fb, fc)
+      # @printf "<%d: (% 2.4f, % 2.4f, % 2.4f)" evals xa xb xc
+      # @printf "= (% 2.3f, % 2.3f, % 2.3f)\n" fa fb fc
     # end
   end
 end
@@ -41,12 +30,14 @@ function bracket(f::Function, xb=0; xa=xb-(1-1/ϕ), xc=xb+1/ϕ, max_evals=10)
   # xb = xa+(ϕ-1)*(xc-xa) # Closer to a
   fb = f(xb)
   evals = 3
-
+  pts = [(xb,fb,0.0)]
   while fb >= fa
     print_progress(xa, xb, xc, fa, fb, fc, evals)
 
     xb, xc = xa, xb
     fb, fc = fa, fb
+    push!(pts, (xb,fb,0.0))
+
 
     xa = xa - ϕ*(xc-xb) # big jump
     fa = f(xa); evals += 1;
@@ -65,18 +56,16 @@ function bracket(f::Function, xb=0; xa=xb-(1-1/ϕ), xc=xb+1/ϕ, max_evals=10)
     fa, fc = fc, fa
   end
   print_progress(xa, xb, xc, fa, fb, fc, evals)
-  println("BRACKETED")
-  return xa, xb, xc, fa, fb, fc, evals
+  return xa, xb, xc, fa, fb, fc, pts, evals
 end
-
-# xa, xb, xc, fa, fb, fc, evals =  bracket(f)
-# xa, xb, xc, fa, fb, fc, evals =  bracket(f,1,-20,21)
-# xa, xb, xc, fa, fb, fc, evals =  bracket(f,1,6,111)
 
 function rebracket(xa, xb, xc, x_new, fa, fb, fc, f_new)
   pts = [(xa, fa), (xb, fb), (xc, fc), (x_new, f_new)]
   x_order = sortperm(pts, by=pt->pt[1])
-  ordered_pts = [pts[x_order[1]], pts[x_order[2]], pts[x_order[3]], pts[x_order[4]]]
+  ordered_pts = [pts[x_order[1]],
+                 pts[x_order[2]],
+                 pts[x_order[3]],
+                 pts[x_order[4]]]
   rank = sortperm(ordered_pts, by=pt->pt[2])
   assert
   if rank[1] == 1 || rank[1] == 4
@@ -88,30 +77,31 @@ function rebracket(xa, xb, xc, x_new, fa, fb, fc, f_new)
   return xa, xb, xc, fa, fb, fc
 end
 
+""" Check whether new_pt meets the Wolfe criteria for objective decrease
+and curvature"""
+function satisfies_wolfe(pt, new_pt, step_size, direction)
+  const wolfe1 = 1e-4
+  const wolfe2 = 0.9
+  sufficient_decrease = new_pt[2] <= pt[2] + wolfe1*step_size*direction*pt[3]
+  sufficient_curvature = new_pt[3] >= wolfe2*pt[3]*direction
+  return sufficient_decrease && sufficient_curvature
+end
 
-function minimise(f::Function, x0, g=None; x_tolerance=0.001,
-   grad_tolerance=1e-12, max_evals=100)
+function minimise(f::Function, x0::Number, g::Function=None;
+   x_tolerance=0.001, grad_tolerance=1e-12, max_evals=100)
     tic();
     evals = 0
 
     # fa < fc
-    xa, xb, xc, fa, fb, fc, evals =  bracket(f, x0; max_evals=max_evals-evals)
+    xa, xb, xc, fa, fb, fc, pts, evals =  bracket(f, x0; max_evals=max_evals)
     gradient = g(xb); evals += 1
     pt = (xb, fb, gradient) # Current min point
+    push!(pts, pt)
 
     stop_search(step=xc-xa) = step <= x_tolerance || abs(gradient) <= grad_tolerance
     while !stop_search()
       println();
       print_progress(xa, xb, xc, fa, fb, fc, evals)
-
-      """new_pt =(x_new, f_new, g_new)"""
-      function satisfies_wolfe(pt, new_pt, step_size, direction)
-        const wolfe_const1 = 1e-4
-        const wolfe_const2 = 0.9
-        sufficient_decrease = new_pt[2] <= pt[2] + wolfe_const1*step_size*direction*pt[3]
-        sufficient_curvature = new_pt[3] >= wolfe_const2*pt[3]*direction
-        return sufficient_decrease && sufficient_curvature
-      end
 
       direction = gradient <= 0 ? 1 : -1 # (p_k)
       if direction > 0
@@ -137,27 +127,25 @@ function minimise(f::Function, x0, g=None; x_tolerance=0.001,
       end
       gradient = g(xb); evals += 1
       pt = (xb, fb, gradient)
+      push!(pts, pt)
 
     end
     print_progress(xa, xb, xc, fa, fb, fc, evals)
-    elapsed_time = toc();
-    return summarise(xa, xb, xc, fa, fb, fc, gradient, evals, elapsed_time)
+    elapsed_time = toq();
+    return summarise(pts, evals, elapsed_time)
 end
-
 
 """ Return a consistent data structure summarising the results. """
-function summarise(xa,xb,xc,fa,fb,fc,gradient,evals,elapsed_time)
-  println(xa, " ", xb, " ", xc, " ", fa, " ", fb, " ", fc, " ", gradient,
-  " ", evals, " ", elapsed_time)
-  return xb
+function summarise(pts,evals,elapsed_time)
+  # println(xa, " ", xb, " ", xc, " ", fa, " ", fb, " ", fc, " ", gradient,
+  # " ", evals, " ", elapsed_time)
+  summary = Dict{ASCIIString, Any}(
+    "x" => pts[length(pts)][1],
+    "minvalue" => pts[length(pts)][2],
+    "gradient" => pts[length(pts)][3],
+    "elapsed_time" => elapsed_time,
+    "evals" => evals,
+    "pts" => pts,
+  )
+  return summary
 end
-
-
-# tic()
-# res = optimize(f, -4.0,45)
-# println(res)
-# toc()
-
-
-⭐ = minimise(f, 20, g)
-println(⭐)
