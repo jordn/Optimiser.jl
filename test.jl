@@ -8,9 +8,8 @@ xa, xb, xc, fa, fb, fc, pts, evals = bracket(f, 10)
 @test xa < 0
 @test 0 < xc
 
-@test 3.9 < approx_gradient(f, 2) < 4.1
-g = gradient_approximator(f)
-@test 3.9 < g(2) < 4.1
+g_approx = gradient_approximator(f)
+@test 3.9 < g_approx(2) < 4.1
 
 # f(X) = (10 - X[1, 1])^2 + (0 - X[1, 2])^2 + (0 - X[2, 1])^2 + (5 - X[2, 2])^2
 # f([1 2; 3 1])
