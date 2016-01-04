@@ -18,14 +18,14 @@ end
 
 
 """ Approximate the gradient using symmetric finite difference """
-function approx_gradient(f, x, ϵ=1e-6)
+function approx_gradient(f, x, ϵ=1e-8)
   g = gradient_approximator(f, ϵ)
   return g(x)
 end
 
 """ Returns a functions which will approximate the gradient using symmetric
 finite difference """
-function gradient_approximator(f::Function, ϵ=1e-6)
+function gradient_approximator(f::Function, ϵ=1e-8)
   # TODO keep track of how many times f has beeen evaluated
   g(x) = (f(x+ϵ) - f(x-ϵ))/2ϵ
   return g
@@ -152,11 +152,11 @@ function minimise(f::Function, x0::Number, g::Function=gradient_approximator(f);
 end
 
 function minimise_multi(f::Function, x0, direction)
-  fNew(scalar)  = f(x0 + scalar*direction)
-  minimise(fNew, x0)
-
+  fNew(scalar) = f(x0 + scalar*direction)
+  summary = minimise(fNew, 0)
+  summary["x"] -= x0
+  return summary
 end
-
 
 """ Return a consistent data structure summarising the results. """
 function summarise(pts,evals,elapsed_time)

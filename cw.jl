@@ -32,13 +32,7 @@ end
 # p = plot(x=randn(2000), Geom.histogram(bincount=100))
 # draw(PDF("equation-graph.pdf", 16cm, 12cm), p)
 
-rosenbrock(x,y) = (1-x)^2+100(y-x^2)^2
-
-summary = minimise_multi(rosenbrock , [2, 2], [0, 1])
-pts = summary["pts"]
-array = zeros(length(pts), 3)
-for i = 1:length(pts)
-  array[i, 1] = pts[i][1]
-  array[i, 2] = pts[i][2]
-  array[i, 3] = pts[i][3]
-end
+#
+rosenbrock(x) = (1-x[1])^2+100(x[2]-x[1]^2)^2
+@time summary = minimise_multi(rosenbrock , [2, 2], [0, 1])
+summary
