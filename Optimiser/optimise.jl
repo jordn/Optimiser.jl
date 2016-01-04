@@ -16,6 +16,21 @@ function print_progress(xa, xb, xc, fa, fb, fc, evals)
   end
 end
 
+
+""" Approximate the gradient using symmetric finite difference """
+function approx_gradient(f, x, ϵ=1e-6)
+  g = gradient_approximator(f, ϵ)
+  return g(x)
+end
+
+""" Returns a functions which will approximate the gradient using symmetric
+finite difference """
+function gradient_approximator(f::Function, ϵ=1e-6)
+  # TODO keep track of how many times f has beeen evaluated
+  g(x) = (f(x+ϵ) - f(x-ϵ))/2ϵ
+  return g
+end
+
 "Bracket the minimum of the function."
 function bracket(f::Function, xb=0; xa=xb-(1-1/ϕ), xc=xb+1/ϕ, max_evals=10)
   xa, xb, xc = sort([xa, xb, xc])
@@ -37,7 +52,6 @@ function bracket(f::Function, xb=0; xa=xb-(1-1/ϕ), xc=xb+1/ϕ, max_evals=10)
     xb, xc = xa, xb
     fb, fc = fa, fb
     push!(pts, (xb,fb,0.0))
-
 
     xa = xa - ϕ*(xc-xb) # big jump
     fa = f(xa); evals += 1;
@@ -87,20 +101,22 @@ function satisfies_wolfe(pt, new_pt, step_size, direction)
   return sufficient_decrease && sufficient_curvature
 end
 
-function minimise(f::Function, x0::Number, g::Function=None;
+function minimise(f::Function, x0::Number, g::Function=gradient_approximator(f);
    x_tolerance=0.001, grad_tolerance=1e-12, max_evals=100)
     tic();
     evals = 0
 
     # fa < fc
     xa, xb, xc, fa, fb, fc, pts, evals =  bracket(f, x0; max_evals=max_evals)
+    # TODO numerically approximate f'(x) if g() not provided
     gradient = g(xb); evals += 1
     pt = (xb, fb, gradient) # Current min point
     push!(pts, pt)
 
-    stop_search(step=xc-xa) = step <= x_tolerance || abs(gradient) <= grad_tolerance
-    while !stop_search()
-      println();
+    converged(step=xc-xa) = (step <= x_tolerance
+                            || abs(gradient) <= grad_tolerance)
+
+    while !converged()
       print_progress(xa, xb, xc, fa, fb, fc, evals)
 
       direction = gradient <= 0 ? 1 : -1 # (p_k)
@@ -118,7 +134,7 @@ function minimise(f::Function, x0::Number, g::Function=None;
         print_progress(xa, xb, xc, fa, fb, fc, evals)
         new_pt = (x_new, f_new, g_new)
         satisfies_wolfe(pt, new_pt, step_size, direction) && break
-        stop_search(step_size) && break
+        converged(step_size) && break
         step_size = step_size*(1-(1/ϕ)) # Step length (α)
       end
 
@@ -134,6 +150,13 @@ function minimise(f::Function, x0::Number, g::Function=None;
     elapsed_time = toq();
     return summarise(pts, evals, elapsed_time)
 end
+
+function minimise_multi(f::Function, x0, direction)
+  fNew(scalar)  = f(x0 + scalar*direction)
+  minimise(fNew, x0)
+
+end
+
 
 """ Return a consistent data structure summarising the results. """
 function summarise(pts,evals,elapsed_time)
