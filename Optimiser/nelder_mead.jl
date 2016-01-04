@@ -1,10 +1,26 @@
 include("optimise.jl")
-
+using PyPlot
 
 # Following the algorithm described in Lagarias et al
 # 'CONVERGENCE PROPERTIES OF THE NELDER–MEAD SIMPLEX METHOD IN LOW DIMENSIONS'
 # http://people.duke.edu/~hpgavin/ce200/Lagarias-98.pdf
-function nelder_mead(f::Function, x0; plot=false)
+function nelder_mead(f::Function, x0, max_iters=500, x_tolerance=1e-3; plot=false)
+
+	if plot
+		close();
+		# PLot in external window as updating plots doesn't work in Jupyter
+		pygui(true)
+		# tell PyPlot that the plot is interactive
+		PyPlot.ion()
+
+		x1scale = abs(x0[1])*1.2
+		x2scale = abs(x0[2])*1.2
+		x1 = linspace(-x1scale,x1scale)';
+		x2 = linspace(-x2scale,x2scale);
+		contour(x1, x2, f(x1, x2), hold=true)
+		ax = gca()
+		grid("on")
+	end
 
 	const c_reflection, c_expansion, c_contraction, c_shrink = 1.0, 2.0, 0.5, 0.5
 	n = length(x0)
@@ -20,11 +36,30 @@ function nelder_mead(f::Function, x0; plot=false)
 		push!(pts, (x[:,i], f_eval[i]))
 	end
 
+	function converged(pts)
+		x = [pt[1] for pt in pts]
+		if norm(x[end] - x[1]) <= x_tolerance
+			return true
+		end
+		return false
+	end
+
 	iterations = 0
 
-	while iterations < 10
+	while !converged(pts) && iterations < max_iters
 		iterations += 1
-		println(pts)
+		# println(pts)
+		if plot
+			x = [pt[1] for pt in pts]
+			x = [pt[1] for pt in pts]
+			x1 = [pt[1] for pt in x]
+			x2 = [pt[2] for pt in x]
+			x1 = [x1; x1[1]]
+			x2 = [x2; x2[1]]
+			# 2D only for now
+			simplex = ax[:plot](x1, x2, "o--")
+			sleep(0.1)
+		end
 
 		# Sort from best to worst
 		sort!(pts, by=pt->pt[2])
@@ -89,5 +124,5 @@ rosenbrock(x,y) = (1 .- x).^2 .+ 100*(y .- x.^2).^2
 # Takes a column vector, or a matrix where each column is an input
 rosenbrock{T<:Number}(X::Array{T,2}) = rosenbrock(X[1,:], X[2,:])
 rosenbrock{T<:Number}(x::Array{T,1}) = rosenbrock(x[1], x[2])[]
-x0 = [1, 2]
+x0 = [0, -10];
 # pts = nelder_mead(rosenbrock, x0)
