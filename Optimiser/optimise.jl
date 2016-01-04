@@ -17,17 +17,11 @@ function print_progress(xa, xb, xc, fa, fb, fc, evals)
 end
 
 
-""" Approximate the gradient using symmetric finite difference """
-function approx_gradient(f, x, ϵ=1e-8)
-  g = gradient_approximator(f, ϵ)
-  return g(x)
-end
-
 """ Returns a functions which will approximate the gradient using symmetric
 finite difference """
 function gradient_approximator(f::Function, ϵ=1e-8)
   # TODO keep track of how many times f has beeen evaluated
-  g(x) = (f(x+ϵ) - f(x-ϵ))/2ϵ
+  g(x) = (f(x+ϵ) - f(x-ϵ))./2ϵ
   return g
 end
 
@@ -101,14 +95,20 @@ function satisfies_wolfe(pt, new_pt, step_size, direction)
   return sufficient_decrease && sufficient_curvature
 end
 
-function minimise(f::Function, x0::Number, g::Function=gradient_approximator(f);
+function minimisise_scalar(f::Function, x0::Number, g::Function=gradient_approximator(f);
+     x_tolerance=0.001, grad_tolerance=1e-12, max_evals=100)
+     return minimise(f, [x0;], g; x_tolerance=x_tolerance,
+      grad_tolerance=grad_tolerance, max_evals=max_evals)
+end
+
+function minimise(f::Function, x0::Array, g::Function=gradient_approximator(f);
    x_tolerance=0.001, grad_tolerance=1e-12, max_evals=100)
     tic();
     evals = 0
 
     # fa < fc
     xa, xb, xc, fa, fb, fc, pts, evals =  bracket(f, x0; max_evals=max_evals)
-    # TODO numerically approximate f'(x) if g() not provided
+    # TODO, if approximating gradient, each g_eval == 2 * f_eval. Count this.
     gradient = g(xb); evals += 1
     pt = (xb, fb, gradient) # Current min point
     push!(pts, pt)
@@ -153,10 +153,12 @@ end
 
 function minimise_multi(f::Function, x0, direction)
   fNew(scalar) = f(x0 + scalar*direction)
-  summary = minimise(fNew, 0)
+  summary = minimise_scalar(fNew, 0)
   summary["x"] -= x0
   return summary
 end
+
+
 
 """ Return a consistent data structure summarising the results. """
 function summarise(pts,evals,elapsed_time)
