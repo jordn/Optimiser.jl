@@ -1,28 +1,68 @@
 include("optimise.jl")
 
 using PyPlot
+using StatsBase
 
-type Point{T}
-  x::T
-  y::T
-end
-
-function tabu_search(f::Function, x0, max_iters=500, x_tolerance=1e-3; plot=false)
+function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500, x_tolerance=1e-3; plot=false)
 
 	if plot
 		# Plot (interactive) in external window as updating plots doesn't work in Jupyter
 		close(); pygui(true); PyPlot.ion();
 		x1 = linspace(-2,2)';
 		x2 = linspace(-1,1);
-		contour_plot = contour(x1, x2, log(f(x1, x2)), 400, hold=true)
+		fig_contour = figure(1)
+		plot_contour = contour(x1, x2, log(f(x1, x2)), 400, hold=true)
 		ax = gca()
 		grid("on")
 	end
 
+	function update_memory(x, v)
+		# Short Term Memory records last N locations
+		if length(stm) == stm_size
+			shift!(stm)
+		end
+		stm = [stm; (x, v)] # Equivalent to push! but handles the unintialised array
+
+		# MTM is sorted list of the N best points
+		if (length(mtm) < mtm_size || v < mtm[end][2]) && !((x, v) in mtm)
+			mtm = [mtm; (x, v)]
+			mtm = sort(mtm, by=pt->pt[2])[1:min(end, mtm_size)]
+		end
+
+		# Long Term Memory records which areas of search space have had attention.
+		x1_index = indmin(abs(bins_x1 - x[1]))
+		x2_index = indmin(abs(bins_x2 - x[2]))
+		# println(string("($x1_index, $x2_index) for $x"))
+		ltm_grid[x2_index, x1_index] += 1
+		ltm = [ltm x]
+	end
+
+	function allowed(x)
+		#  return x in [pt[1] for pt in stm[max(1,end-stm_size):end]]
+		seen = x in [pt[1] for pt in stm[max(1,end-stm_size):end]]
+		bitarray = [-2.0,-1.0] .<= x .<= [2.0,1.0]
+		return bitarray[1] && bitarray[2] && !seen
+	end
+
+	function diversify(ltm)
+		# Taking a histogram to characterise where has been searched
+		fig2 = figure(2)
+		tally, x1_bins, x2_bins = plt[:hist2d](vec(ltm[1,:]), vec(ltm[2,:]),
+			range=[-2 2; -1 1])
+
+		# Using the negative tallies as an un-normalised distribution for where to
+		# search next
+		wv = WeightVec(sum(tally)-vec(-tally))
+		index = sample(wv)
+		x1_index, x2_index = ind2sub((length(x1_bins), length(x2_bins)), index)
+		return [x1_bins[x1_index], x2_bins[x2_index]]
+	end
+
+
 	n = length(x0)
 
 	# Uniform increments in each direction for now. TODO optimise.
-	increments = ones(n)*0.4
+	increments = ones(n)*0.2
 
 	x_base = x0
 	v_base = f(x_base)
@@ -31,78 +71,41 @@ function tabu_search(f::Function, x0, max_iters=500, x_tolerance=1e-3; plot=fals
 
 	# Short Term Memory (records last N locations)
 	const stm_size = 7
-	stm = [(x_base, v_base)]
+	stm = Vector[]
 
 	# Medium Term Memory (records the N best solutions)
 	const mtm_size = 4
-	mtm = [(x_base, v_base)]
-	# TODO, incorporate the 'best' into the MTM
-	x_best, v_best = x_base, v_base
+	mtm = Vector[]
 
-	# Long Term Memory (records which areas of search space have had attention)
-	# TODO make Bayesian
-	const grid_size = 10
-	ltm_x1 = -2:(4.0/grid_size):2
-	ltm_x2 = -1:(2.0/grid_size):1
-	ltm = zeros(length(ltm_x1), length(ltm_x2))
+	# Long Term Memory records which areas of search space have had attention.
+	const grid_size = 3
+	bins_x1 = -2:(4.0/grid_size):2
+	bins_x2 = -1:(2.0/grid_size):1
+	ltm_grid = zeros(length(bins_x1), length(bins_x2))
+	ltm = Array(Float64,2,0)
 
 	const TRIGGER_INTENSIFICATION = 10 # number of iteraions without MTM changing
-	const TRIGGER_DIVERSIFICATION = 2 #TRIGGER_INTENSIFICATION + 2
+	const TRIGGER_DIVERSIFICATION = 15
 	const TRIGGER_STEP_SIZE_REDUCTION = 25 # number of iteraions without MTM changing
 
-	function update_memory(x, v)
+	converged() = false # TODO test convergence
 
-		stm = [stm; (x, v)]
+	update_memory(x_base, v_base)
 
-		mtm = [mtm, (x, v)]
-
-		x1_index = indmin(abs(ltm_x1 - x[1]))
-		x2_index = indmin(abs(ltm_x2 - x[2]))
-		println(string("($x1_index, $x2_index) for $x_current"))
-		ltm[x2_index, x1_index] += 1
-	end
-
-	typeof(stm)
-	 function allowed(x)
-		#  return x in [pt[1] for pt in stm[max(1,end-stm_size):end]]
-		seen = x in [pt[1] for pt in stm[max(1,end-stm_size):end]]
-		bitarray = [-2.0,-1.0] .<= x .<= [2.0,1.0]
-		return bitarray[1] && bitarray[2] && !seen
-	 end
-
-	while iterations < max_iters
+	while !converged() && iterations < max_iters
 		iterations += 1
-		counter += 1
-		# SEARCH INTENSIFICATION
-		if counter == TRIGGER_INTENSIFICATION
-			x_base = mean([pt[1] for pt in mtm])
-			println("SEARCH INTENSIFICATION DANCE ༼ つ ◕_◕ ༽つ")
-		elseif counter == TRIGGER_DIVERSIFICATION
-			println("SEARCH DIVERSIFICATION SHRUG ¯\_(ツ)_/¯")
-			# TODO Sample from the search space in an unused
-			index = indmin(ltm)
-			x1_index, x2_index = ind2sub(size(ltm), index)
-			x_base = [ltm_x1[x1_index], ltm_x2[x2_index]]
-			ltm[x1_index, x2_index] += 1 # TODO, overcounting
-			counter = 0 #TODO remove
-			println("SEARCH DIVERSIFICATION MOVED TO ", x_base)
-		elseif count == TRIGGER_STEP_SIZE_REDUCTION
-			println("STEP SIZE FUCKING REDUCED CUS WHY NOT (╯°□°）╯︵ ┻━┻")
-			increments = 0.618*increments
-			counter = 0
-		end
+		println("$iterations $counter")
+
 		v_base = f(x_base)
+		current_best_v = mtm[1][2]
 
 		if plot
-			# 2D only for now
+			fig_contour = figure(1)
 			ax[:plot](x_base[1], x_base[2], "o--")
-			# if iterations == 4
-			# 	ax[:relim]()
-			# 	autoscale(tight=false)
-			# end
-			sleep(0.004)
+			sleep(0.04)
 		end
 
+		# LOCAL SEARCH
 		x_tests = repmat(x_base, 1, n^2)
 		j = 0
 		# Increment and decrement each dimension
@@ -112,30 +115,15 @@ function tabu_search(f::Function, x0, max_iters=500, x_tolerance=1e-3; plot=fals
 		end
 		v_tests = f(x_tests)
 
+		# Select best direction
 		order = sortperm(v_tests)
 		for i = 1:length(v_tests)
 			if allowed(x_tests[:, order[i]])
 				x_current = x_tests[:, order[i]]
 				v_current = v_tests[order[i]]
-				push!(stm, (x_current, v_current))
-				# TODO Add methods for MTM to judge whether something should be added, order
-				push!(mtm, (x_current, v_current))
-				x1_val = x_current[1]
-				x2_val = x_current[2]
-				x1_index = indmin(abs(ltm_x1-x1_val))
-				x2_index = indmin(abs(ltm_x2-x2_val))
-				# x1_index2 = max(1,floor(Int64, (x_current[1]+2)/4.0*grid_size))
-				# x2_index2 = max(1,floor(Int64, (x_current[2]+1)/2.0*grid_size))
-				println(string("($x1_index, $x2_index) for $x_current"))
-				ltm[x2_index, x1_index] += 1
-				if v_current < v_best
-					x_best, v_best = x_current, v_current
-					counter = 0
-				end
 				break
 			end
 		end
-
 
 		# PATTERN MOVE
 		if isdefined(:v_current) && v_current < v_base
@@ -143,29 +131,43 @@ function tabu_search(f::Function, x0, max_iters=500, x_tolerance=1e-3; plot=fals
 			v_test = f(x_test)
 			if v_test < v_current
 				x_current, v_current = x_test, v_test
-				push!(stm, (x_current, v_current))
-				# TODO Add methods for MTM to judge whether something should be added, order
-				push!(mtm, (x_current, v_current))
-				x1_index = indmin(abs(ltm_x1-x1_val))
-				x2_index = indmin(abs(ltm_x2-x2_val))
-				# x1_index2 = max(1,floor(Int64, (x_current[1]+2)/4.0*grid_size))
-				# x2_index2 = max(1,floor(Int64, (x_current[2]+1)/2.0*grid_size))
-				println(string("($x1_index, $x2_index) for $x_current"))
-				ltm[x2_index, x1_index] += 1
-				if v_current < v_best
-					x_best, v_best = x_current, v_current
-					counter = 0
-				end
 			end
 		end
 
-		x_base, v_base = x_current, v_current
-		# println(ltm)
+		update_memory(x_current, v_current)
+
+		if mtm[1][2] < current_best_v # New best
+			counter = 0
+		else
+			counter += 1
+		end
+
+		# SEARCH INTENSIFICATION
+		if counter == TRIGGER_INTENSIFICATION
+			x_current = mean([pt[1] for pt in mtm])
+			println("SEARCH INTENSIFICATION DANCE ༼ つ ◕_◕ ༽つ")
+		elseif counter == TRIGGER_DIVERSIFICATION
+			println("SEARCH DIVERSIFICATION SHRUG ¯\_(ツ)_/¯")
+			# TODO Sample from the search space in an unused
+			# Sample from unused space
+			# index = indmin(ltm_grid)
+			# x1_index, x2_index = ind2sub(size(ltm_grid), index)
+			# x_current = [bins_x1[x1_index], bins_x2[x2_index]]
+			x_current = diversify(ltm)
+
+			println("SEARCH DIVERSIFICATION MOVED TO ", x_current)
+		elseif counter == TRIGGER_STEP_SIZE_REDUCTION
+			println("STEP SIZE FUCKING REDUCED CUS WHY NOT (╯°□°）╯︵ ┻━┻")
+			const ϕ = 0.5 * (1.0 + sqrt(5.0))
+			increments = increments/ϕ
+			x_current = mtm[1][1]
+			counter = 0
+		end
+		x_base, v_base = x_current, f(x_current)
+
 	end
-	println(x_best, v_best)
 
 	return stm,mtm,ltm
-
 end
 
 # Takes in two 1D arrays and creates a 2D grid_size
@@ -174,5 +176,5 @@ rosenbrock(x,y) = (1 .- x).^2 .+ 100*(y .- x.^2).^2
 rosenbrock{T<:Number}(X::Array{T,2}) = vec(rosenbrock(X[1,:], X[2,:]))
 # Takes a vector, returns a number
 rosenbrock{T<:Number}(x::Array{T,1}) = rosenbrock(x[1], x[2])[]
-x0 = [0, -10];
+x0 = [0.1, -1];
 # pts = tabu_search(rosenbrock, x0)
