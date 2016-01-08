@@ -5,7 +5,7 @@ using StatsBase
 using Distributions
 
 function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
-  x_tolerance=1e-3; contraints=[], plot=false, plot_log=false)
+  max_f_evals=1000, x_tolerance=1e-6; contraints=[], plot=false, plot_log=false)
 
   # RNG seed for consistent comparisons
   srand(567)
@@ -52,7 +52,7 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     xlabel("x1")
     ylabel("x2")
     plot_log ? zlabel("log f(x)") : zlabel("f(x)")
-    title("Surface Plot")
+    title(@sprintf "Surface plot of %s" symbol(f))
 
     subplot(212)
     ax2 = fig[:add_subplot](2,1,2)
@@ -60,8 +60,10 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     # ax[:clabel](cp, inline=1, fontsize=10)
     xlabel("x1")
     ylabel("x2")
-    title("Contour Plot")
+    title(@sprintf "Contour plot of %s" symbol(f))
     tight_layout()
+
+    savefig(@sprintf "figs/%s-0.png" symbol(f))
 
     # plot_contour = contour(x1grid, x2grid, log(grid), 300, hold=true)
     # ax = gca()
@@ -70,15 +72,15 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
 
   function update_memory(x, v)
     # Short Term Memory records last N locations
-    if length(stm) == stm_size
+    if length(stm) == STM_SIZE
       shift!(stm)
     end
     stm = [stm; (x, v)] # Equivalent to push! but handles the unintialised array
 
     # MTM is sorted list of the N best points
-    if (length(mtm) < mtm_size || v < mtm[end][2]) && !((x, v) in mtm)
+    if (length(mtm) < MTM_SIZE || v < mtm[end][2]) && !((x, v) in mtm)
       mtm = [mtm; (x, v)]
-      mtm = sort(mtm, by=pt->pt[2])[1:min(end, mtm_size)]
+      mtm = sort(mtm, by=pt->pt[2])[1:min(end, MTM_SIZE)]
     end
 
     # Long Term Memory records which areas of search space have had attention.
@@ -87,21 +89,19 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
 
   function allowed(x)
     if length(contraints) > 0
-      bitarray = contraints[:,1] .<= x .<= contraints[:,2]
-      for b in bitarray
-        if !b return false end
-      end
+      within_contraints = minimum(contraints[:,1] .<= x .<= contraints[:,2])
+      if !within_contraints return false end
     end
-    seen = x in [pt[1] for pt in stm[max(1,end-stm_size):end]]
+    seen = x in [pt[1] for pt in stm[max(1,end-STM_SIZE):end]]
     return !seen
   end
 
   function diversify(ltm)
     # Taking a histogram to characterise where has been searched
-    fig2 = figure(2)
-    tally, x1_bins, x2_bins = plt[:hist2d](vec(ltm[1,:]), vec(ltm[2,:]),
-      range=x_range)
-
+    const bins = 6
+    x1_bins = linspace(x_range[1,1], x_range[1,2], bins);
+    x2_bins = linspace(x_range[2,1], x_range[2,2], bins);
+    x1_bins, x2_bins, tally = hist2d(ltm', x1_bins, x2_bins)
     # Using the negative tallies as an unnormalised distribution as we wish to
     # favour unexplored regions.
     wv = WeightVec(sum(tally)-vec(-tally))
@@ -112,11 +112,11 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
 
 
   # Short Term Memory (records last N locations)
-  const stm_size = 7
+  const STM_SIZE = 7
   stm = Vector[]
 
   # Medium Term Memory (records the N best solutions)
-  const mtm_size = 4
+  const MTM_SIZE = 4
   mtm = Vector[]
 
   # Long Term Memory records which areas of search space have had attention.
@@ -127,7 +127,11 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
   const TRIGGER_STEP_SIZE_REDUCTION = 25 # number of iteraions without MTM changing
   const STEP_SIZE_MULTIPLIER = 0.5
 
-  converged() = false # TODO test convergence
+  # TODO, use hyperparmeters to sat figure save name
+  hypers = [STM_SIZE, MTM_SIZE, TRIGGER_INTENSIFICATION, TRIGGER_DIVERSIFICATION,
+    TRIGGER_STEP_SIZE_REDUCTION, STEP_SIZE_MULTIPLIER]
+
+  converged() = minimum(step_size .<= x_tolerance)
 
   dims = length(x0)
 
@@ -137,6 +141,7 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
   v_base = f(x_base)
   iterations = 0
   counter = 0
+  f_evals = 1
 
   update_memory(x_base, v_base)
 
@@ -151,7 +156,10 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
       fig_contour = figure(1)
       ax1[:plot]([x_base[1]], [x_base[2]], plot_log?log(v_base):v_base, "o--")
       ax2[:plot](x_base[1], x_base[2], "o--")
-      sleep(0.04)
+      if iterations%100 == 0
+        savefig(@sprintf "figs/%s-%d.png" symbol(f) iterations)
+      end
+      # sleep(0.04)
     end
 
     # LOCAL SEARCH
