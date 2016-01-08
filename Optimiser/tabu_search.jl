@@ -87,13 +87,16 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     ltm = [ltm x]
   end
 
-  function allowed(x)
+  function within_contraints(x)
     if length(contraints) > 0
-      within_contraints = minimum(contraints[:,1] .<= x .<= contraints[:,2])
-      if !within_contraints return false end
+      return minimum(contraints[:,1] .<= x .<= contraints[:,2])
     end
+    return true
+  end
+
+  function allowed(x)
     seen = x in [pt[1] for pt in stm[max(1,end-STM_SIZE):end]]
-    return !seen
+    return !seen && within_contraints(x)
   end
 
   function diversify(ltm)
@@ -136,20 +139,22 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
   dims = length(x0)
 
   # Uniform step_size in each direction for now. TODO optimise.
-  step_size = ones(dims)*0.8
+  step_size = ones(dims)*0.08
   x_base = x0
   v_base = f(x_base)
   iterations = 0
   counter = 0
   f_evals = 1
 
-  update_memory(x_base, v_base)
 
   while !converged() && iterations < max_iters
+    update_memory(x_base, v_base)
+
     iterations += 1
-    println("$iterations $counter")
+    println("$iterations $counter $f_evals")
 
     v_base = f(x_base)
+    f_evals += 1
     current_best_v = mtm[1][2]
 
     if plot
@@ -162,38 +167,40 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
       # sleep(0.04)
     end
 
+    x_steps = Array(Float64,2,0)
+
     # LOCAL SEARCH
-    x_tests = repmat(x_base, 1, dims^2)
-    j = 0
     # Increment and decrement each dimension
-    for i = 1:dims
-      x_tests[i,j+=1] += step_size[i]
-      x_tests[i,j+=1] -= step_size[i]
+    for i =1:dims
+      x_inc, x_dec = copy(x_base), copy(x_base)
+      x_inc[i] += step_size[i]
+      x_dec[i] -= step_size[i]
+      if allowed(x_inc) x_steps = [x_steps x_inc] end
+      if allowed(x_dec) x_steps = [x_steps x_dec] end
     end
-    v_tests = f(x_tests)
 
-    # Select best direction
-    order = sortperm(v_tests)
-    for i = 1:length(v_tests)
-      if allowed(x_tests[:, order[i]])
-        x_current = x_tests[:, order[i]]
-        v_current = v_tests[order[i]]
-        break
+    if length(x_steps) > 0
+      v_steps = f(x_steps)
+      f_evals += length(v_steps)
+      # Select best direction
+      v_current, index = findmin(v_steps)
+      x_current = x_steps[:,index]
+      update_memory(x_current, v_current)   # TODO? put this here?
+
+      # Pattern move
+      if v_current < v_base
+        x_test = x_current + x_current - x_base
+        v_test = f(x_test)
+        f_evals += 1
+        if v_test < v_current
+          x_current, v_current = x_test, v_test
+          update_memory(x_current, v_current)
+        end
       end
     end
 
-    # PATTERN MOVE
-    if isdefined(:v_current) && v_current < v_base
-      x_test = x_current + x_current - x_base
-      v_test = f(x_test)
-      if v_test < v_current
-        x_current, v_current = x_test, v_test
-      end
-    end
-
-    update_memory(x_current, v_current)
-
-    if mtm[1][2] < current_best_v # New best
+    # Check if new best
+    if mtm[1][2] < current_best_v
       counter = 0
     else
       counter += 1
@@ -202,18 +209,23 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     # SEARCH INTENSIFICATION
     if counter == TRIGGER_INTENSIFICATION
       x_current = mean([pt[1] for pt in mtm])
+      v_current = f(x_current)
+      f_evals += 1
       println("SEARCH INTENSIFICATION DANCE ༼ つ ◕_◕ ༽つ")
     elseif counter == TRIGGER_DIVERSIFICATION
       println("SEARCH DIVERSIFICATION SHRUG ¯\_(ツ)_/¯")
       x_current = diversify(ltm)
+      v_current = f(x_current)
+      f_evals += 1
       println("SEARCH DIVERSIFICATION MOVED TO ", x_current)
     elseif counter == TRIGGER_STEP_SIZE_REDUCTION
       println("STEP SIZE REDUCED CUS WHY NOT RAAAHH (╯°□°）╯︵ ┻━┻")
       step_size = step_size .* STEP_SIZE_MULTIPLIER
       x_current = mtm[1][1]
+      v_current = mtm[1][2]
       counter = 0
     end
-    x_base, v_base = x_current, f(x_current)
+    x_base, v_base = x_current, v_current
 
   end
 
