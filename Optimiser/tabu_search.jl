@@ -3,13 +3,23 @@ include("optimise.jl")
 using PyPlot
 using StatsBase
 
-function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500, x_tolerance=1e-3; plot=false)
+function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
+	x_tolerance=1e-3; contraints=[], plot=false)
+
+	# RNG seed for consistent comparisons
+	srand(567)
+
+	if length(contraints) > 0
+		range = contraints
+	else
+		range = repmat([-5 5], length(x0))
+	end
 
 	if plot
 		# Plot (interactive) in external window as updating plots doesn't work in Jupyter
-		close(); pygui(true); PyPlot.ion();
-		x1 = linspace(-2,2)';
-		x2 = linspace(-1,1);
+		close("all"); pygui(true); PyPlot.ion();
+		x1 = linspace(range[1,1], range[1,2])';
+		x2 = linspace(range[2,1], range[2,2]);
 		fig_contour = figure(1)
 		plot_contour = contour(x1, x2, log(f(x1, x2)), 400, hold=true)
 		ax = gca()
@@ -30,28 +40,28 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500, x_toleranc
 		end
 
 		# Long Term Memory records which areas of search space have had attention.
-		x1_index = indmin(abs(bins_x1 - x[1]))
-		x2_index = indmin(abs(bins_x2 - x[2]))
-		# println(string("($x1_index, $x2_index) for $x"))
-		ltm_grid[x2_index, x1_index] += 1
 		ltm = [ltm x]
 	end
 
 	function allowed(x)
-		#  return x in [pt[1] for pt in stm[max(1,end-stm_size):end]]
+		if length(contraints) > 0
+			bitarray = contraints[:,1] .<= x .<= contraints[:,2]
+			for b in bitarray
+      	if !b return false end
+      end
+		end
 		seen = x in [pt[1] for pt in stm[max(1,end-stm_size):end]]
-		bitarray = [-2.0,-1.0] .<= x .<= [2.0,1.0]
-		return bitarray[1] && bitarray[2] && !seen
+		return !seen
 	end
 
 	function diversify(ltm)
 		# Taking a histogram to characterise where has been searched
 		fig2 = figure(2)
 		tally, x1_bins, x2_bins = plt[:hist2d](vec(ltm[1,:]), vec(ltm[2,:]),
-			range=[-2 2; -1 1])
+			range=range)
 
-		# Using the negative tallies as an un-normalised distribution for where to
-		# search next
+		# Using the negative tallies as an unnormalised distribution as we wish to
+		# favour unexplored regions.
 		wv = WeightVec(sum(tally)-vec(-tally))
 		index = sample(wv)
 		x1_index, x2_index = ind2sub((length(x1_bins), length(x2_bins)), index)
@@ -62,7 +72,7 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500, x_toleranc
 	n = length(x0)
 
 	# Uniform increments in each direction for now. TODO optimise.
-	increments = ones(n)*0.2
+	increments = ones(n)*0.08
 
 	x_base = x0
 	v_base = f(x_base)
@@ -78,10 +88,6 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500, x_toleranc
 	mtm = Vector[]
 
 	# Long Term Memory records which areas of search space have had attention.
-	const grid_size = 3
-	bins_x1 = -2:(4.0/grid_size):2
-	bins_x2 = -1:(2.0/grid_size):1
-	ltm_grid = zeros(length(bins_x1), length(bins_x2))
 	ltm = Array(Float64,2,0)
 
 	const TRIGGER_INTENSIFICATION = 10 # number of iteraions without MTM changing
@@ -148,18 +154,11 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500, x_toleranc
 			println("SEARCH INTENSIFICATION DANCE ༼ つ ◕_◕ ༽つ")
 		elseif counter == TRIGGER_DIVERSIFICATION
 			println("SEARCH DIVERSIFICATION SHRUG ¯\_(ツ)_/¯")
-			# TODO Sample from the search space in an unused
-			# Sample from unused space
-			# index = indmin(ltm_grid)
-			# x1_index, x2_index = ind2sub(size(ltm_grid), index)
-			# x_current = [bins_x1[x1_index], bins_x2[x2_index]]
 			x_current = diversify(ltm)
-
 			println("SEARCH DIVERSIFICATION MOVED TO ", x_current)
 		elseif counter == TRIGGER_STEP_SIZE_REDUCTION
-			println("STEP SIZE FUCKING REDUCED CUS WHY NOT (╯°□°）╯︵ ┻━┻")
-			const ϕ = 0.5 * (1.0 + sqrt(5.0))
-			increments = increments/ϕ
+			println("STEP SIZE HALVED CUS WHY NOT RAAAHH (╯°□°）╯︵ ┻━┻")
+			increments = increments/2.0
 			x_current = mtm[1][1]
 			counter = 0
 		end
@@ -178,3 +177,5 @@ rosenbrock{T<:Number}(X::Array{T,2}) = vec(rosenbrock(X[1,:], X[2,:]))
 rosenbrock{T<:Number}(x::Array{T,1}) = rosenbrock(x[1], x[2])[]
 x0 = [0.1, -1];
 # pts = tabu_search(rosenbrock, x0)
+
+# stm,mtm,ltm=tabu_search(rosenbrock, [-2.0, -1], 90; limits=[-2 2; -1 1] plot=true)
