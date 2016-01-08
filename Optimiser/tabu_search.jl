@@ -2,171 +2,214 @@ include("optimise.jl")
 
 using PyPlot
 using StatsBase
+using Distributions
 
 function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
-	x_tolerance=1e-3; contraints=[], plot=false)
+  x_tolerance=1e-3; contraints=[], plot=false, plot_log=false)
 
-	# RNG seed for consistent comparisons
-	srand(567)
+  # RNG seed for consistent comparisons
+  srand(567)
 
-	if length(contraints) > 0
-		range = contraints
-	else
-		range = repmat([-5 5], length(x0))
-	end
+  if length(contraints) > 0
+    x_range = contraints
+  else
+    x_range = repmat([-5 5], length(x0))
+  end
 
-	if plot
-		# Plot (interactive) in external window as updating plots doesn't work in Jupyter
-		close("all"); pygui(true); PyPlot.ion();
-		x1 = linspace(range[1,1], range[1,2])';
-		x2 = linspace(range[2,1], range[2,2]);
-		fig_contour = figure(1)
-		plot_contour = contour(x1, x2, log(f(x1, x2)), 400, hold=true)
-		ax = gca()
-		grid("on")
-	end
 
-	function update_memory(x, v)
-		# Short Term Memory records last N locations
-		if length(stm) == stm_size
-			shift!(stm)
-		end
-		stm = [stm; (x, v)] # Equivalent to push! but handles the unintialised array
 
-		# MTM is sorted list of the N best points
-		if (length(mtm) < mtm_size || v < mtm[end][2]) && !((x, v) in mtm)
-			mtm = [mtm; (x, v)]
-			mtm = sort(mtm, by=pt->pt[2])[1:min(end, mtm_size)]
-		end
+  if plot
+    ############
+    ##  Plot  ##
+    ############
 
-		# Long Term Memory records which areas of search space have had attention.
-		ltm = [ltm x]
-	end
+    # Plot (interactive) in external window as updating plots doesn't work in Jupyter
+    close("all"); pygui(true); PyPlot.ion();
+    n = 200
+    x1 = linspace(x_range[1,1], x_range[1,2], n);
+    x2 = linspace(x_range[2,1], x_range[2,2], n);
+    grid = zeros(length(x2),length(x1))
 
-	function allowed(x)
-		if length(contraints) > 0
-			bitarray = contraints[:,1] .<= x .<= contraints[:,2]
-			for b in bitarray
-      	if !b return false end
+    x1grid = repmat(x1', length(x2), 1)
+    x2grid = repmat(x2, 1, length(x1))
+
+    for i in 1:length(x2) #row (x2[i])
+        for j in 1:length(x1) #col (x1[j])
+            # z[i:i,j:j] = pdf(MvNormal(eye(2)),[x1[i];x2[j]])
+            grid[i:i,j:j] = f(x1[j],x2[i])
+        end
+    end
+    if plot_log
+      grid = log(grid)
+    end
+
+    fig = figure("surfaceplot", figsize=(10,10))
+    ax1 = fig[:add_subplot](2,1,1, projection = "3d")
+
+    ax1[:plot_surface](x1grid, x2grid, grid, rstride=2, edgecolors="k",
+      cstride=2, #cmap=ColorMap("coolwarm"),
+      alpha=0.8, linewidth=0.25)
+    xlabel("x1")
+    ylabel("x2")
+    plot_log ? zlabel("log f(x)") : zlabel("f(x)")
+    title("Surface Plot")
+
+    subplot(212)
+    ax2 = fig[:add_subplot](2,1,2)
+    cp = ax2[:contour](x1grid, x2grid, grid, n, linewidth=2.0)
+    # ax[:clabel](cp, inline=1, fontsize=10)
+    xlabel("x1")
+    ylabel("x2")
+    title("Contour Plot")
+    tight_layout()
+
+    # plot_contour = contour(x1grid, x2grid, log(grid), 300, hold=true)
+    # ax = gca()
+    # grid("on")
+  end
+
+  function update_memory(x, v)
+    # Short Term Memory records last N locations
+    if length(stm) == stm_size
+      shift!(stm)
+    end
+    stm = [stm; (x, v)] # Equivalent to push! but handles the unintialised array
+
+    # MTM is sorted list of the N best points
+    if (length(mtm) < mtm_size || v < mtm[end][2]) && !((x, v) in mtm)
+      mtm = [mtm; (x, v)]
+      mtm = sort(mtm, by=pt->pt[2])[1:min(end, mtm_size)]
+    end
+
+    # Long Term Memory records which areas of search space have had attention.
+    ltm = [ltm x]
+  end
+
+  function allowed(x)
+    if length(contraints) > 0
+      bitarray = contraints[:,1] .<= x .<= contraints[:,2]
+      for b in bitarray
+        if !b return false end
       end
-		end
-		seen = x in [pt[1] for pt in stm[max(1,end-stm_size):end]]
-		return !seen
-	end
+    end
+    seen = x in [pt[1] for pt in stm[max(1,end-stm_size):end]]
+    return !seen
+  end
 
-	function diversify(ltm)
-		# Taking a histogram to characterise where has been searched
-		fig2 = figure(2)
-		tally, x1_bins, x2_bins = plt[:hist2d](vec(ltm[1,:]), vec(ltm[2,:]),
-			range=range)
+  function diversify(ltm)
+    # Taking a histogram to characterise where has been searched
+    fig2 = figure(2)
+    tally, x1_bins, x2_bins = plt[:hist2d](vec(ltm[1,:]), vec(ltm[2,:]),
+      range=x_range)
 
-		# Using the negative tallies as an unnormalised distribution as we wish to
-		# favour unexplored regions.
-		wv = WeightVec(sum(tally)-vec(-tally))
-		index = sample(wv)
-		x1_index, x2_index = ind2sub((length(x1_bins), length(x2_bins)), index)
-		return [x1_bins[x1_index], x2_bins[x2_index]]
-	end
+    # Using the negative tallies as an unnormalised distribution as we wish to
+    # favour unexplored regions.
+    wv = WeightVec(sum(tally)-vec(-tally))
+    index = sample(wv)
+    x1_index, x2_index = ind2sub((length(x1_bins), length(x2_bins)), index)
+    return [x1_bins[x1_index], x2_bins[x2_index]]
+  end
 
 
-	n = length(x0)
+  # Short Term Memory (records last N locations)
+  const stm_size = 7
+  stm = Vector[]
 
-	# Uniform increments in each direction for now. TODO optimise.
-	increments = ones(n)*0.08
+  # Medium Term Memory (records the N best solutions)
+  const mtm_size = 4
+  mtm = Vector[]
 
-	x_base = x0
-	v_base = f(x_base)
-	iterations = 0
-	counter = 0
+  # Long Term Memory records which areas of search space have had attention.
+  ltm = Array(Float64,2,0)
 
-	# Short Term Memory (records last N locations)
-	const stm_size = 7
-	stm = Vector[]
+  const TRIGGER_INTENSIFICATION = 10 # number of iteraions without MTM changing
+  const TRIGGER_DIVERSIFICATION = 15
+  const TRIGGER_STEP_SIZE_REDUCTION = 25 # number of iteraions without MTM changing
+  const STEP_SIZE_MULTIPLIER = 0.5
 
-	# Medium Term Memory (records the N best solutions)
-	const mtm_size = 4
-	mtm = Vector[]
+  converged() = false # TODO test convergence
 
-	# Long Term Memory records which areas of search space have had attention.
-	ltm = Array(Float64,2,0)
+  dims = length(x0)
 
-	const TRIGGER_INTENSIFICATION = 10 # number of iteraions without MTM changing
-	const TRIGGER_DIVERSIFICATION = 15
-	const TRIGGER_STEP_SIZE_REDUCTION = 25 # number of iteraions without MTM changing
+  # Uniform step_size in each direction for now. TODO optimise.
+  step_size = ones(dims)*0.8
+  x_base = x0
+  v_base = f(x_base)
+  iterations = 0
+  counter = 0
 
-	converged() = false # TODO test convergence
+  update_memory(x_base, v_base)
 
-	update_memory(x_base, v_base)
+  while !converged() && iterations < max_iters
+    iterations += 1
+    println("$iterations $counter")
 
-	while !converged() && iterations < max_iters
-		iterations += 1
-		println("$iterations $counter")
+    v_base = f(x_base)
+    current_best_v = mtm[1][2]
 
-		v_base = f(x_base)
-		current_best_v = mtm[1][2]
+    if plot
+      fig_contour = figure(1)
+      ax1[:plot]([x_base[1]], [x_base[2]], plot_log?log(v_base):v_base, "o--")
+      ax2[:plot](x_base[1], x_base[2], "o--")
+      sleep(0.04)
+    end
 
-		if plot
-			fig_contour = figure(1)
-			ax[:plot](x_base[1], x_base[2], "o--")
-			sleep(0.04)
-		end
+    # LOCAL SEARCH
+    x_tests = repmat(x_base, 1, dims^2)
+    j = 0
+    # Increment and decrement each dimension
+    for i = 1:dims
+      x_tests[i,j+=1] += step_size[i]
+      x_tests[i,j+=1] -= step_size[i]
+    end
+    v_tests = f(x_tests)
 
-		# LOCAL SEARCH
-		x_tests = repmat(x_base, 1, n^2)
-		j = 0
-		# Increment and decrement each dimension
-		for i = 1:n
-			x_tests[i,j+=1] += increments[i]
-			x_tests[i,j+=1] -= increments[i]
-		end
-		v_tests = f(x_tests)
+    # Select best direction
+    order = sortperm(v_tests)
+    for i = 1:length(v_tests)
+      if allowed(x_tests[:, order[i]])
+        x_current = x_tests[:, order[i]]
+        v_current = v_tests[order[i]]
+        break
+      end
+    end
 
-		# Select best direction
-		order = sortperm(v_tests)
-		for i = 1:length(v_tests)
-			if allowed(x_tests[:, order[i]])
-				x_current = x_tests[:, order[i]]
-				v_current = v_tests[order[i]]
-				break
-			end
-		end
+    # PATTERN MOVE
+    if isdefined(:v_current) && v_current < v_base
+      x_test = x_current + x_current - x_base
+      v_test = f(x_test)
+      if v_test < v_current
+        x_current, v_current = x_test, v_test
+      end
+    end
 
-		# PATTERN MOVE
-		if isdefined(:v_current) && v_current < v_base
-			x_test = x_current + x_current - x_base
-			v_test = f(x_test)
-			if v_test < v_current
-				x_current, v_current = x_test, v_test
-			end
-		end
+    update_memory(x_current, v_current)
 
-		update_memory(x_current, v_current)
+    if mtm[1][2] < current_best_v # New best
+      counter = 0
+    else
+      counter += 1
+    end
 
-		if mtm[1][2] < current_best_v # New best
-			counter = 0
-		else
-			counter += 1
-		end
+    # SEARCH INTENSIFICATION
+    if counter == TRIGGER_INTENSIFICATION
+      x_current = mean([pt[1] for pt in mtm])
+      println("SEARCH INTENSIFICATION DANCE ༼ つ ◕_◕ ༽つ")
+    elseif counter == TRIGGER_DIVERSIFICATION
+      println("SEARCH DIVERSIFICATION SHRUG ¯\_(ツ)_/¯")
+      x_current = diversify(ltm)
+      println("SEARCH DIVERSIFICATION MOVED TO ", x_current)
+    elseif counter == TRIGGER_STEP_SIZE_REDUCTION
+      println("STEP SIZE REDUCED CUS WHY NOT RAAAHH (╯°□°）╯︵ ┻━┻")
+      step_size = step_size .* STEP_SIZE_MULTIPLIER
+      x_current = mtm[1][1]
+      counter = 0
+    end
+    x_base, v_base = x_current, f(x_current)
 
-		# SEARCH INTENSIFICATION
-		if counter == TRIGGER_INTENSIFICATION
-			x_current = mean([pt[1] for pt in mtm])
-			println("SEARCH INTENSIFICATION DANCE ༼ つ ◕_◕ ༽つ")
-		elseif counter == TRIGGER_DIVERSIFICATION
-			println("SEARCH DIVERSIFICATION SHRUG ¯\_(ツ)_/¯")
-			x_current = diversify(ltm)
-			println("SEARCH DIVERSIFICATION MOVED TO ", x_current)
-		elseif counter == TRIGGER_STEP_SIZE_REDUCTION
-			println("STEP SIZE HALVED CUS WHY NOT RAAAHH (╯°□°）╯︵ ┻━┻")
-			increments = increments/2.0
-			x_current = mtm[1][1]
-			counter = 0
-		end
-		x_base, v_base = x_current, f(x_current)
+  end
 
-	end
-
-	return stm,mtm,ltm
+  return stm,mtm,ltm
 end
 
 # Takes in two 1D arrays and creates a 2D grid_size
@@ -175,6 +218,12 @@ rosenbrock(x,y) = (1 .- x).^2 .+ 100*(y .- x.^2).^2
 rosenbrock{T<:Number}(X::Array{T,2}) = vec(rosenbrock(X[1,:], X[2,:]))
 # Takes a vector, returns a number
 rosenbrock{T<:Number}(x::Array{T,1}) = rosenbrock(x[1], x[2])[]
+
+# TODO, remove added constant so i can plot it log scale
+camel(x,y) = (4 .- 2.1 .*x.^2 .+ (1/3).*x.^4).*x.^2 .+ x.*y .+ (4 .* y.^2 .- 4).*y.^2 +1.3
+camel{T<:Number}(X::Array{T,2}) = [camel(X[1,i], X[2,i]) for i in 1:size(X,2)]
+camel{T<:Number}(x::Array{T,1}) = camel(x[1], x[2])[]
+
 x0 = [0.1, -1];
 # pts = tabu_search(rosenbrock, x0)
 
