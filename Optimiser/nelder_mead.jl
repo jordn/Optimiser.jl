@@ -5,28 +5,69 @@ using PyPlot
 # 'CONVERGENCE PROPERTIES OF THE NELDER–MEAD SIMPLEX METHOD IN LOW DIMENSIONS'
 # http://people.duke.edu/~hpgavin/ce200/Lagarias-98.pdf
 function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000,
-  x_tolerance=1e-6; plot=false, plot_log=false)
+  x_tolerance=1e-6; contraints=[], plot=false, plot_log=false)
 
   # RNG seed for consistent comparisons
   srand(567)
 
+  if length(contraints) > 0
+    x_range = contraints
+  else
+    x1_max = max(1, abs(x0[1])*2.2)
+    x2_max = max(1, abs(x0[2])*2.2)
+    x_range = [-x1_max x1_max; -x2_max x2_max]
+  end
 
 	if plot
-		close("all");
-		# Plot in external window as updating plots doesn't work in Jupyter
-		pygui(true)
-		# tell PyPlot that the plot is interactive
-		PyPlot.ion()
+    # Plot (interactive) in external window as updating plots doesn't work in Jupyter
+    close("all"); pygui(true); PyPlot.ion();
 
-		x1scale = max(1, abs(x0[1])*2.2)
-		x2scale = max(1, abs(x0[2])*2.2)
-		x1 = linspace(-x1scale,x1scale)';
-		x2 = linspace(-x2scale,x2scale);
-		contour_plot = contour(x1, x2, plot_log? log(f(x1, x2)): f(x1, x2), 400, hold=true)
-		ax = gca()
-		xlim(-x1scale/1.5, x1scale/1.5)
-		ylim(-x2scale/1.5, x2scale/1.5)
-		grid("on")
+    if length(contraints) > 0
+      x_range = contraints
+    else
+      x1_max = max(1, abs(x0[1])*2.2)
+      x2_max = max(1, abs(x0[2])*2.2)
+      x_range = [-x1_max x1_max; -x2_max x2_max]
+    end
+
+    n = 200
+    x1 = linspace(x_range[1,1], x_range[1,2], n);
+    x2 = linspace(x_range[2,1], x_range[2,2], n);
+    grid = zeros(length(x2),length(x1))
+
+    x1grid = repmat(x1', length(x2), 1)
+    x2grid = repmat(x2, 1, length(x1))
+
+    for i in 1:length(x2) #row (x2[i])
+      for j in 1:length(x1) #col (x1[j])
+        grid[i:i,j:j] = f(x1[j],x2[i])
+      end
+    end
+    if plot_log
+      grid = log(grid)
+    end
+
+    fig = figure("surfaceplot", figsize=(10,10))
+    ax1 = fig[:add_subplot](2,1,1, projection = "3d")
+
+    ax1[:plot_surface](x1grid, x2grid, grid, rstride=2, edgecolors="k",
+      cstride=2, cmap=ColorMap("jet_r"),
+      alpha=0.8, linewidth=0.25)
+    xlabel("x1")
+    ylabel("x2")
+    plot_log ? zlabel("log f(x)") : zlabel("f(x)")
+    title(@sprintf "Surface plot of %s" symbol(f))
+
+    subplot(212)
+    ax2 = fig[:add_subplot](2,1,2)
+    cp = ax2[:contour](x1grid, x2grid, grid, n, linewidth=2.0,
+     cmap=ColorMap("jet_r"),)
+    xlabel("x1")
+    ylabel("x2")
+    title(@sprintf "Contour plot of %s" symbol(f))
+    tight_layout()
+
+    savefig(@sprintf "figs/nm-%s-0.png" symbol(f))
 	end
 
 	const c_reflection, c_expansion, c_contraction, c_shrink = 1.0, 2.0, 0.5, 0.5
@@ -55,19 +96,22 @@ function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000,
 		iterations += 1
 
 		if plot
-			x = [pt[1] for pt in pts]
-			x = [pt[1] for pt in pts]
-			x1 = [pt[1] for pt in x]
-			x2 = [pt[2] for pt in x]
+			x1 = [pt[1][1] for pt in pts]
+			x2 = [pt[1][2] for pt in pts]
+      v = [pt[2] for pt in pts]
 			x1, x2 = [x1; x1[1]], [x2; x2[1]] # Add vertex for simplex
 
-			# 2D only for now
-			simplex = ax[:plot](x1, x2, "o--")
-			if iterations == 10
-				ax[:relim]()
-				autoscale(tight=false)
-			end
-			sleep(0.4)
+			# if iterations == 10
+			# 	ax[:relim]()
+			# 	autoscale(tight=false)
+			# end
+
+      # ax1[:plot](x1, x2, plot_log?log(v):v, "o--")
+      simplex = ax2[:plot](x1, x2, "o--")
+      if iterations%100 == 0
+        savefig(@sprintf "figs/tabu-%s-%d.png" symbol(f) iterations)
+      end
+      sleep(0.4)
 
 		end
 
@@ -134,5 +178,8 @@ rosenbrock(x,y) = (1 .- x).^2 .+ 100*(y .- x.^2).^2
 # Takes a column vector, or a matrix where each column is an input
 rosenbrock{T<:Number}(X::Array{T,2}) = rosenbrock(X[1,:], X[2,:])
 rosenbrock{T<:Number}(x::Array{T,1}) = rosenbrock(x[1], x[2])[]
+camel(x,y) = (4 .- 2.1 .*x.^2 .+ (1/3).*x.^4).*x.^2 .+ x.*y .+ (4 .* y.^2 .- 4).*y.^2
+camel{T<:Number}(X::Array{T,2}) = [camel(X[1,i], X[2,i]) for i in 1:size(X,2)]
+camel{T<:Number}(x::Array{T,1}) = camel(x[1], x[2])[]
 x0 = [0, -10];
 # pts = nelder_mead(rosenbrock, x0)

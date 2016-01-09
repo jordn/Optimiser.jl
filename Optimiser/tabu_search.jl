@@ -31,10 +31,9 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     x2grid = repmat(x2, 1, length(x1))
 
     for i in 1:length(x2) #row (x2[i])
-        for j in 1:length(x1) #col (x1[j])
-            # z[i:i,j:j] = pdf(MvNormal(eye(2)),[x1[i];x2[j]])
-            grid[i:i,j:j] = f(x1[j],x2[i])
-        end
+      for j in 1:length(x1) #col (x1[j])
+        grid[i:i,j:j] = f(x1[j],x2[i])
+      end
     end
     if plot_log
       grid = log(grid)
@@ -44,7 +43,7 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     ax1 = fig[:add_subplot](2,1,1, projection = "3d")
 
     ax1[:plot_surface](x1grid, x2grid, grid, rstride=2, edgecolors="k",
-      cstride=2, #cmap=ColorMap("coolwarm"),
+      cstride=2, cmap=ColorMap("jet_r"),
       alpha=0.8, linewidth=0.25)
     xlabel("x1")
     ylabel("x2")
@@ -53,14 +52,14 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
 
     subplot(212)
     ax2 = fig[:add_subplot](2,1,2)
-    cp = ax2[:contour](x1grid, x2grid, grid, n, linewidth=2.0)
-    # ax[:clabel](cp, inline=1, fontsize=10)
+    cp = ax2[:contour](x1grid, x2grid, grid, n, linewidth=2.0,
+     cmap=ColorMap("jet_r"),)
     xlabel("x1")
     ylabel("x2")
     title(@sprintf "Contour plot of %s" symbol(f))
     tight_layout()
 
-    savefig(@sprintf "figs/%s-0.png" symbol(f))
+    savefig(@sprintf "figs/tabu-%s-0.png" symbol(f))
 
     # plot_contour = contour(x1grid, x2grid, log(grid), 300, hold=true)
     # ax = gca()
@@ -154,11 +153,10 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     current_best_v = mtm[1][2]
 
     if plot
-      fig_contour = figure(1)
       ax1[:plot]([x_base[1]], [x_base[2]], plot_log?log(v_base):v_base, "o--")
       ax2[:plot](x_base[1], x_base[2], "o--")
       if iterations%100 == 0
-        savefig(@sprintf "figs/%s-%d.png" symbol(f) iterations)
+        savefig(@sprintf "figs/tabu-%s-%d.png" symbol(f) iterations)
       end
       # sleep(0.04)
     end
@@ -235,8 +233,7 @@ rosenbrock{T<:Number}(X::Array{T,2}) = vec(rosenbrock(X[1,:], X[2,:]))
 # Takes a vector, returns a number
 rosenbrock{T<:Number}(x::Array{T,1}) = rosenbrock(x[1], x[2])[]
 
-# TODO, remove added constant so i can plot it log scale
-camel(x,y) = (4 .- 2.1 .*x.^2 .+ (1/3).*x.^4).*x.^2 .+ x.*y .+ (4 .* y.^2 .- 4).*y.^2 +1.3
+camel(x,y) = (4 .- 2.1 .*x.^2 .+ (1/3).*x.^4).*x.^2 .+ x.*y .+ (4 .* y.^2 .- 4).*y.^2
 camel{T<:Number}(X::Array{T,2}) = [camel(X[1,i], X[2,i]) for i in 1:size(X,2)]
 camel{T<:Number}(x::Array{T,1}) = camel(x[1], x[2])[]
 
