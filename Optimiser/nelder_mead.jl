@@ -4,10 +4,15 @@ using PyPlot
 # Following the algorithm described in Lagarias et al
 # 'CONVERGENCE PROPERTIES OF THE NELDER–MEAD SIMPLEX METHOD IN LOW DIMENSIONS'
 # http://people.duke.edu/~hpgavin/ce200/Lagarias-98.pdf
-function nelder_mead(f::Function, x0, max_iters=500, x_tolerance=1e-3; plot=false)
+function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000,
+  x_tolerance=1e-6; plot=false, plot_log=false)
+
+  # RNG seed for consistent comparisons
+  srand(567)
+
 
 	if plot
-		close();
+		close("all");
 		# Plot in external window as updating plots doesn't work in Jupyter
 		pygui(true)
 		# tell PyPlot that the plot is interactive
@@ -17,7 +22,7 @@ function nelder_mead(f::Function, x0, max_iters=500, x_tolerance=1e-3; plot=fals
 		x2scale = max(1, abs(x0[2])*2.2)
 		x1 = linspace(-x1scale,x1scale)';
 		x2 = linspace(-x2scale,x2scale);
-		contour_plot = contour(x1, x2, log(f(x1, x2)), 400, hold=true)
+		contour_plot = contour(x1, x2, plot_log? log(f(x1, x2)): f(x1, x2), 400, hold=true)
 		ax = gca()
 		xlim(-x1scale/1.5, x1scale/1.5)
 		ylim(-x2scale/1.5, x2scale/1.5)
@@ -40,13 +45,11 @@ function nelder_mead(f::Function, x0, max_iters=500, x_tolerance=1e-3; plot=fals
 
 	function converged(pts)
 		x = [pt[1] for pt in pts]
-		if norm(x[end] - x[1]) <= x_tolerance
-			return true
-		end
-		return false
+		return norm(x[end] - x[1]) <= x_tolerance
 	end
 
 	iterations = 0
+  f_evals
 
 	while !converged(pts) && iterations < max_iters
 		iterations += 1
@@ -60,19 +63,9 @@ function nelder_mead(f::Function, x0, max_iters=500, x_tolerance=1e-3; plot=fals
 
 			# 2D only for now
 			simplex = ax[:plot](x1, x2, "o--")
-			if iterations == 4
+			if iterations == 10
 				ax[:relim]()
 				autoscale(tight=false)
-				# x1lim = ax[:get_ylim]()
-				# x2lim = ax[:get_ylim]()
-				# gcf()
-
-				# x1 = linspace(-x1lim[1]*2,x1lim[2]*2)';
-				# x2 = linspace(-x2lim[1]*2,x2lim[2]*2);
-				# contour_plot = contour(x1, x2, log(f(x1, x2)), 200, hold=true)
-				# xlim(-x1scale/1.5, x1scale/1.5)
-				# ylim(-x2scale/1.5, x2scale/1.5)
-
 			end
 			sleep(0.4)
 

@@ -2,7 +2,6 @@ include("optimise.jl")
 
 using PyPlot
 using StatsBase
-using Distributions
 
 function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
   max_f_evals=1000, x_tolerance=1e-6; contraints=[], plot=false, plot_log=false)
@@ -15,8 +14,6 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
   else
     x_range = repmat([-5 5], length(x0))
   end
-
-
 
   if plot
     ############
@@ -113,7 +110,6 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     return [x1_bins[x1_index], x2_bins[x2_index]]
   end
 
-
   # Short Term Memory (records last N locations)
   const STM_SIZE = 7
   stm = Vector[]
@@ -147,7 +143,7 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
   f_evals = 1
 
 
-  while !converged() && iterations < max_iters
+  while !converged() && f_evals <= max_f_evals && iterations <= max_iters
     update_memory(x_base, v_base)
 
     iterations += 1

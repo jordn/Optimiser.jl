@@ -4,15 +4,7 @@ const global disp_progress = false
 function print_progress(xa, xb, xc, fa, fb, fc, evals)
   if disp_progress
     const fmt = ">{}: ({: 2.4f}, {: 2.4f}, {: 2.4f}) = ({: 2.3f}, {: 2.3f}, {: 2.3f})\n"
-    # if xa > xc
-      # printfmt(fmt, evals, xc, xb, xa, fc, fb, fa)
-      # @printf "%d: (% 2.2f, % 2.2f, % 2.2f) = (% 2.3f, % 2.3f, % 2.3f)\n" evals xc xb xa fc fb fa
-    # else
-      # @printf "%d: (% 2.2f, % 2.2f, % 2.2f) = (% 2.3f, % 2.3f, % 2.3f)\n" evals xa xb xc fa fb fc
       printfmt(fmt, evals, xa, xb, xc, fa, fb, fc)
-      # @printf "<%d: (% 2.4f, % 2.4f, % 2.4f)" evals xa xb xc
-      # @printf "= (% 2.3f, % 2.3f, % 2.3f)\n" fa fb fc
-    # end
   end
 end
 
@@ -101,7 +93,7 @@ function minimisise_scalar(f::Function, x0::Number, g::Function=gradient_approxi
       grad_tolerance=grad_tolerance, max_evals=max_evals)
 end
 
-function minimise(f::Function, x0::Array, g::Function=gradient_approximator(f);
+function minimise(f::Function, x0::Vector, g::Function=gradient_approximator(f);
    x_tolerance=0.001, grad_tolerance=1e-12, max_evals=100)
     tic();
     evals = 0
@@ -157,7 +149,6 @@ function minimise_multi(f::Function, x0, direction)
   summary["x"] -= x0
   return summary
 end
-
 
 
 """ Return a consistent data structure summarising the results. """
