@@ -1,5 +1,7 @@
 const ϕ = 0.5 * (1.0 + sqrt(5.0))
-const global disp_progress = false
+const global disp_progress = true
+
+using Formatting
 
 function print_progress(xa, xb, xc, fa, fb, fc, evals)
   if disp_progress
@@ -87,17 +89,18 @@ function satisfies_wolfe(pt, new_pt, step_size, direction)
   return sufficient_decrease && sufficient_curvature
 end
 
-function minimisise_scalar(f::Function, x0::Number, g::Function=gradient_approximator(f);
+function minimise_scalar(f::Function, x0::Number, g::Function=gradient_approximator(f);
      x_tolerance=0.001, grad_tolerance=1e-12, max_evals=100)
-     return minimise(f, [x0;], g; x_tolerance=x_tolerance,
+     return minimise(f, vec([x0]), g; x_tolerance=x_tolerance,
       grad_tolerance=grad_tolerance, max_evals=max_evals)
 end
 
 function minimise(f::Function, x0::Vector, g::Function=gradient_approximator(f);
-   x_tolerance=0.001, grad_tolerance=1e-12, max_evals=100)
+   x_tolerance=0.001, grad_tolerance=1e-12, max_evals=100, plot=false)
     tic();
     evals = 0
 
+    println()
     # fa < fc
     xa, xb, xc, fa, fb, fc, pts, evals =  bracket(f, x0; max_evals=max_evals)
     # TODO, if approximating gradient, each g_eval == 2 * f_eval. Count this.

@@ -1,4 +1,5 @@
 include("optimise.jl")
+include("plot.jl")
 using PyPlot
 
 # Following the algorithm described in Lagarias et al
@@ -19,55 +20,7 @@ function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000,
   end
 
 	if plot
-    # Plot (interactive) in external window as updating plots doesn't work in Jupyter
-    close("all"); pygui(true); PyPlot.ion();
-
-    if length(contraints) > 0
-      x_range = contraints
-    else
-      x1_max = max(1, abs(x0[1])*2.2)
-      x2_max = max(1, abs(x0[2])*2.2)
-      x_range = [-x1_max x1_max; -x2_max x2_max]
-    end
-
-    n = 200
-    x1 = linspace(x_range[1,1], x_range[1,2], n);
-    x2 = linspace(x_range[2,1], x_range[2,2], n);
-    grid = zeros(length(x2),length(x1))
-
-    x1grid = repmat(x1', length(x2), 1)
-    x2grid = repmat(x2, 1, length(x1))
-
-    for i in 1:length(x2) #row (x2[i])
-      for j in 1:length(x1) #col (x1[j])
-        grid[i:i,j:j] = f(x1[j],x2[i])
-      end
-    end
-    if plot_log
-      grid = log(grid)
-    end
-
-    fig = figure("surfaceplot", figsize=(10,10))
-    ax1 = fig[:add_subplot](2,1,1, projection = "3d")
-
-    ax1[:plot_surface](x1grid, x2grid, grid, rstride=2, edgecolors="k",
-      cstride=2, cmap=ColorMap("jet_r"),
-      alpha=0.8, linewidth=0.25)
-    xlabel("x1")
-    ylabel("x2")
-    plot_log ? zlabel("log f(x)") : zlabel("f(x)")
-    title(@sprintf "Surface plot of %s" symbol(f))
-
-    subplot(212)
-    ax2 = fig[:add_subplot](2,1,2)
-    cp = ax2[:contour](x1grid, x2grid, grid, n, linewidth=2.0,
-     cmap=ColorMap("jet_r"),)
-    xlabel("x1")
-    ylabel("x2")
-    title(@sprintf "Contour plot of %s" symbol(f))
-    tight_layout()
-
-    savefig(@sprintf "figs/nm-%s-0.png" symbol(f))
+    fig, ax1, ax2 = plot_contour(f, x_range; name="nm", plot_log=plot_log)
 	end
 
 	const c_reflection, c_expansion, c_contraction, c_shrink = 1.0, 2.0, 0.5, 0.5
