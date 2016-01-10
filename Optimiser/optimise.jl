@@ -88,11 +88,15 @@ end
 
 """ Check whether new_pt meets the Wolfe criteria for objective decrease
 and curvature"""
-function satisfies_wolfe(pt, new_pt, step_size, direction)
+function satisfies_wolfe(pt, new_pt, step_size, direction; strong=true)
   const wolfe1 = 1e-4
   const wolfe2 = 0.9
   sufficient_decrease = new_pt[2] <= pt[2] + wolfe1*step_size*direction*pt[3]
-  sufficient_curvature = new_pt[3] >= wolfe2*pt[3]*direction
+  if strong
+    sufficient_curvature = abs(new_pt[3]) <= abs(wolfe2*pt[3]*direction)
+  else
+    sufficient_curvature = new_pt[3] >= wolfe2*pt[3]*direction
+  end
   return sufficient_decrease && sufficient_curvature
 end
 
