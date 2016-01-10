@@ -1,6 +1,6 @@
 using PyPlot
 
-function plot_contour(f, x_range; name="contour", plot_log=false)
+function plot_contour(f, x_range; name="contour")
 
   ############
   ##  Plot  ##
@@ -21,9 +21,6 @@ function plot_contour(f, x_range; name="contour", plot_log=false)
       grid[i:i,j:j] = f([x1[j],x2[i]])
     end
   end
-  if plot_log
-    grid = log(grid)
-  end
 
   fig = figure("surfaceplot", figsize=(10,10))
   ax1 = fig[:add_subplot](2,1,1, projection = "3d")
@@ -33,7 +30,7 @@ function plot_contour(f, x_range; name="contour", plot_log=false)
     alpha=0.8, linewidth=0.25)
   xlabel("x1")
   ylabel("x2")
-  plot_log ? zlabel("log f(x)") : zlabel("f(x)")
+  zlabel("f(x)")
   title(@sprintf "Surface plot of %s" symbol(f))
 
   subplot(212)
@@ -50,7 +47,7 @@ function plot_contour(f, x_range; name="contour", plot_log=false)
 end
 
 
-function plot_line(f, x_range::Vector; name="line", plot_log=false)
+function plot_line(f, x_range::Vector; name="line")
   # Plot (interactive) in external window as updating plots doesn't work in Jupyter
   close("lineplot"); pygui(true); PyPlot.ion();
   n = 200
@@ -58,11 +55,6 @@ function plot_line(f, x_range::Vector; name="line", plot_log=false)
   v = zeros(n)
   v = [f(x_i) for x_i in x]
 
-  if plot_log
-    v = [log(f(x_i)) for x_i in x]
-  else
-    v = [f(x_i) for x_i in x]
-  end
   fig = figure("lineplot")
   # fig = figure()
   # ax = fig[:add_axes]()
@@ -71,7 +63,7 @@ function plot_line(f, x_range::Vector; name="line", plot_log=false)
   plot(x,v)
   ax = gca()
   xlabel("x")
-  plot_log? ylabel("log f(x)") : ylabel("f(x)")
+  ylabel("f(x)")
   title(@sprintf "Plot of %s" symbol(f))
   tight_layout()
   savefig(@sprintf "figs/%s-%s-0.png" name symbol(f))

@@ -6,7 +6,7 @@ using PyPlot
 # 'CONVERGENCE PROPERTIES OF THE NELDER–MEAD SIMPLEX METHOD IN LOW DIMENSIONS'
 # http://people.duke.edu/~hpgavin/ce200/Lagarias-98.pdf
 function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000,
-  x_tolerance=1e-6; contraints=[], plot=false, plot_log=false)
+  x_tolerance=1e-6; contraints=[], plot=false)
 
   # RNG seed for consistent comparisons
   srand(567)
@@ -20,7 +20,7 @@ function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000,
   end
 
 	if plot
-    fig, ax1, ax2 = plot_contour(f, x_range; name="nm", plot_log=plot_log)
+    fig, ax1, ax2 = plot_contour(f, x_range; name="nm")
 	end
 
 	const c_reflection, c_expansion, c_contraction, c_shrink = 1.0, 2.0, 0.5, 0.5
@@ -59,7 +59,6 @@ function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000,
 			# 	autoscale(tight=false)
 			# end
 
-      # ax1[:plot](x1, x2, plot_log?log(v):v, "o--")
       simplex = ax2[:plot](x1, x2, "o--")
       if iterations%100 == 0
         savefig(@sprintf "figs/tabu-%s-%d.png" symbol(f) iterations)

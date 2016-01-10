@@ -5,7 +5,7 @@ using PyPlot
 using StatsBase
 
 function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
-  max_f_evals=1000, x_tolerance=1e-6; contraints=[], plot=false, plot_log=false)
+  max_f_evals=1000, x_tolerance=1e-6; contraints=[], plot=false)
 
   # RNG seed for consistent comparisons
   srand(567)
@@ -19,7 +19,7 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
   end
 
   if plot
-    fig, ax1, ax2 = plot_contour(f, x_range; name="tabu", plot_log=plot_log)
+    fig, ax1, ax2 = plot_contour(f, x_range; name="tabu")
   end
 
   function update_memory(x, v)
@@ -109,7 +109,7 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     current_best_v = mtm[1][2]
 
     if plot
-      ax1[:plot]([x_base[1]], [x_base[2]], plot_log?log(v_base):v_base, "o--")
+      ax1[:plot]([x_base[1]], [x_base[2]], v_base, "o--")
       ax2[:plot](x_base[1], x_base[2], "o--")
       if iterations%100 == 0
         savefig(@sprintf "figs/tabu-%s-%d.png" symbol(f) iterations)

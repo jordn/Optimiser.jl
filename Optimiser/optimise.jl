@@ -108,8 +108,7 @@ function satisfies_wolfe(pt, new_pt, step_size, direction; strong=true)
 end
 
 function minimise_2d(f::Function, x0::Vector, g::Function=gradient_approximator(f;dims=length(x0));
-  x_tolerance=0.001, grad_tolerance=1e-12, max_f_evals=100, contraints=[],
-  plot=false, plot_log=false)
+  x_tolerance=0.001, grad_tolerance=1e-12, max_f_evals=100, contraints=[], plot=false)
   tic();
   f_evals = 0
   g_evals = 0
@@ -125,7 +124,7 @@ function minimise_2d(f::Function, x0::Vector, g::Function=gradient_approximator(
       x2_max = max(1, abs(x0[2])*2)
       x_range = [-x1_max x1_max; -x2_max x2_max]
     end
-    fig, ax1, ax2 = plot_contour(f, x_range; name="tabu", plot_log=plot_log)
+    fig, ax1, ax2 = plot_contour(f, x_range; name="tabu")
   end
 
   # TODO, if approximating gradient, each g_eval == 2 * f_eval. Count this.
@@ -142,7 +141,7 @@ function minimise_2d(f::Function, x0::Vector, g::Function=gradient_approximator(
     pt = (x, val, gradient)
     push!(pts, pt)
     if plot
-      ax1[:plot]([x[1]], [x[2]], plot_log?log(val):val, "o")
+      ax1[:plot]([x[1]], [x[2]], val, "o")
       ax2[:plot](x[1], x[2], "o--")
       ax2[:plot]([x[1], x[1]+direction[1]], [x[2], x[2]+direction[2]], "--")
       if iterations%100 == 0
@@ -153,7 +152,7 @@ function minimise_2d(f::Function, x0::Vector, g::Function=gradient_approximator(
 
     # Line search in direction
     f_line(scalar) = f(x + scalar*direction)
-    summary = line_search(f_line, 0, max_f_evals=10; plot=plot, plot_log=plot_log)
+    summary = line_search(f_line, 0, max_f_evals=10; plot=plot)
     show(summary);
     scalar = summary["x"]
     val = summary["min_value"]
@@ -170,7 +169,7 @@ end
 
 
 function line_search(f::Function, x0::Number, g::Function=gradient_approximator(f);
-  x_tolerance=0.001, grad_tolerance=1e-12, max_f_evals=20, plot=false, plot_log=false)
+  x_tolerance=0.001, grad_tolerance=1e-12, max_f_evals=20, plot=false)
   tic();
   converged(step=xc-xa) = (step <= x_tolerance
                           || abs(gradient) <= grad_tolerance)
@@ -179,7 +178,7 @@ function line_search(f::Function, x0::Number, g::Function=gradient_approximator(
   xa, xb, xc, fa, fb, fc, pts, f_evals =  bracket(f, x0; max_evals=max_f_evals)
 
   if plot
-    fig_line, ax_line = plot_line(f,[xa, xc]; name="line", plot_log=plot_log)
+    fig_line, ax_line = plot_line(f,[xa, xc]; name="line")
   end
 
   gradient = g(xb); g_evals = 1
@@ -198,7 +197,7 @@ function line_search(f::Function, x0::Number, g::Function=gradient_approximator(
 
     while true
       if plot
-        ax_line[:plot]([xa,xb,xc], plot_log ? log([fa, fb, fc]): [fa, fb, fc], "o--")
+        ax_line[:plot]([xa,xb,xc], [fa, fb, fc], "o--")
         sleep(.1)
       end
       x_new = xb + step_size*direction
@@ -221,6 +220,7 @@ function line_search(f::Function, x0::Number, g::Function=gradient_approximator(
   elapsed_time = toc();
   return summarise(pts, f_evals, elapsed_time);
 end
+
 
 """ Return a consistent data structure summarising the results. """
 function summarise(pts, f_evals, elapsed_time=""; g_evals="")
