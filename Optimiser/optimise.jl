@@ -1,10 +1,10 @@
 include("plot.jl")
 include("functions.jl")
+using Formatting
 
 const ϕ = 0.5 * (1.0 + sqrt(5.0))
-const global disp_progress = true
-
-using Formatting
+const global disp_progress = false
+normalise(x) = x/norm(x)
 
 function print_progress(xa, xb, xc, fa, fb, fc, evals)
   if disp_progress
@@ -107,8 +107,16 @@ function satisfies_wolfe(pt, new_pt, step_size, direction; strong=true)
   return sufficient_decrease && sufficient_curvature
 end
 
-function minimise_2d(f::Function, x0::Vector, g::Function=gradient_approximator(f;dims=length(x0));
-  x_tolerance=0.001, grad_tolerance=1e-12, max_f_evals=100, contraints=[], plot=false)
+function minimise_2d(f::Function,
+                     x0::Vector,
+                     g::Function=gradient_approximator(f;dims=length(x0));
+                     method="steepest_descent",
+                     x_tolerance=0.001,
+                     grad_tolerance=1e-12,
+                     max_iterations=20,
+                     max_f_evals=1000,
+                     contraints=[],
+                     plot=false)
   tic();
   f_evals = 0
   g_evals = 0
@@ -128,18 +136,29 @@ function minimise_2d(f::Function, x0::Vector, g::Function=gradient_approximator(
   end
 
   # TODO, if approximating gradient, each g_eval == 2 * f_eval. Count this.
-  normalise(x) = x/norm(x)
-
   pts = []
   x = x0
   val = f(x); f_evals += 1;
 
-  while iterations <= 2 && f_evals <= max_f_evals
+  while iterations < max_iterations && f_evals <= max_f_evals
     iterations += 1
     gradient = jacobian(x); g_evals += 1
-    direction = -normalise(gradient)
     pt = (x, val, gradient)
     push!(pts, pt)
+
+    if method == "steepest_descent" || iterations == 1
+      direction = -normalise(gradient) #Steepest descent
+    elseif method == "conjugate_gradients"
+      # Original method
+      # beta = gradient'*gradient / (gradient_prev'*gradient_prev)
+      # Polak and Ribiere method
+      beta = gradient'*(gradient-gradient_prev) / (gradient_prev'*gradient_prev)
+      direction = normalise(beta[]*direction_prev - gradient)
+    end
+
+    # direction = copy(normalise(new_direction))
+    # println( "direction(saagain) ", direction)
+
     if plot
       ax1[:plot]([x[1]], [x[2]], val, "o")
       ax2[:plot](x[1], x[2], "o--")
@@ -147,19 +166,23 @@ function minimise_2d(f::Function, x0::Vector, g::Function=gradient_approximator(
       if iterations%100 == 0
         savefig(@sprintf "figs/gradient-%s-%d.png" symbol(f) iterations)
       end
-      sleep(4)
+      sleep(.1)
     end
 
-    # Line search in direction
-    f_line(scalar) = f(x + scalar*direction)
-    summary = line_search(f_line, 0, max_f_evals=10; plot=plot)
-    show(summary);
-    scalar = summary["x"]
+    # Line search in direction with step_size α
+    f_line(α) = f(x + α*direction)
+    summary = line_search(f_line, 0, max_f_evals=max_f_evals-f_evals;
+                          plot=false, direction=1)
+    # show(summary);
+    α = summary["x"]
     val = summary["min_value"]
     f_evals += summary["function_evals"]
-    x = scalar*direction # get back real x
-    println("scalar: ", scalar)
+    x = x + α*direction # get back real x
+    println("step_size: ", α)
     println(x , " => ", val )
+    println( "direction ", direction)
+    gradient_prev = copy(gradient)
+    direction_prev = copy(direction)
     println()
   end
   elapsed_time = toc();
@@ -168,11 +191,20 @@ function minimise_2d(f::Function, x0::Vector, g::Function=gradient_approximator(
 end
 
 
-function line_search(f::Function, x0::Number, g::Function=gradient_approximator(f);
-  x_tolerance=0.001, grad_tolerance=1e-12, max_f_evals=20, plot=false)
+function line_search(f::Function, x0::Number=0, g::Function=gradient_approximator(f);
+  direction=0, x_tolerance=0.001, grad_tolerance=1e-12, max_f_evals=20, plot=false)
   tic();
   converged(step=xc-xa) = (step <= x_tolerance
                           || abs(gradient) <= grad_tolerance)
+
+  # TODO, save time by knowing direction, and sensible starting bracket width
+  # # If we have a direction (pointing downhill) can save evaluations by initally
+  # # bracketting only forwards
+  # if direction > 0
+  #   xa, xb, xc = x0, x0*ϕ, x0*ϕ*ϕ
+  # elseif x0 != 0
+  #   xa, xb, xc = x0, x0*ϕ, x0+ϕ
+  # end
 
   # fa < fc
   xa, xb, xc, fa, fb, fc, pts, f_evals =  bracket(f, x0; max_evals=max_f_evals)
@@ -221,6 +253,26 @@ function line_search(f::Function, x0::Number, g::Function=gradient_approximator(
   return summarise(pts, f_evals, elapsed_time);
 end
 
+# """ Linear conjugate gradient solver of form Ax = b"""
+# function conjugate_gradients(A,b,x)
+#   r = b-A*x
+#   p = r
+#   rsold = r'*r
+#
+#   for i = 1:length(b)
+#     Ap = A*p
+#     alpha = rsold/(p'*Ap)
+#     x = x + alpha.*p
+#     r = r-alpha.*Ap
+#     rsnew = r'*r
+#     if sqrt(rsnew[]) < 1e-10
+#       break
+#     end
+#     p = r+(rsnew/rsold).*p
+#     rsold = rsnew
+#   end
+#   return x
+# end
 
 """ Return a consistent data structure summarising the results. """
 function summarise(pts, f_evals, elapsed_time=""; g_evals="")
