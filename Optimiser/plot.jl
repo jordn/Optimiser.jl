@@ -1,7 +1,7 @@
 using PyPlot
 
-function plot_contour(f, x_range; name="arse", plot_log=false)
-  
+function plot_contour(f, x_range; name="contour", plot_log=false)
+
   ############
   ##  Plot  ##
   ############
@@ -18,7 +18,7 @@ function plot_contour(f, x_range; name="arse", plot_log=false)
 
   for i in 1:length(x2) #row (x2[i])
     for j in 1:length(x1) #col (x1[j])
-      grid[i:i,j:j] = f(x1[j],x2[i])
+      grid[i:i,j:j] = f([x1[j],x2[i]])
     end
   end
   if plot_log
@@ -47,4 +47,33 @@ function plot_contour(f, x_range; name="arse", plot_log=false)
 
   savefig(@sprintf "figs/%s-%s-0.png" name symbol(f))
   return fig, ax1, ax2
+end
+
+
+function plot_slice(f, x_range::Vector; name="line", plot_log=false)
+  # Plot (interactive) in external window as updating plots doesn't work in Jupyter
+  pygui(true); PyPlot.ion();
+  n = 200
+  x = linspace(x_range[1], x_range[2], n);
+  v = zeros(n)
+  v = [f(x_i) for x_i in x]
+
+  if plot_log
+    v = [log(f(x_i)) for x_i in x]
+  else
+    v = [f(x_i) for x_i in x]
+  end
+  # fig = figure("sliceplot", figsize=(10,10))
+  fig = figure()
+  # ax = fig[:add_axes]()
+
+  # ax[:plot](x, v)
+  plot(x,v)
+  ax = gca()
+  xlabel("x")
+  plot_log? ylabel("log f(x)") : ylabel("f(x)")
+  title(@sprintf "Plot of %s" symbol(f))
+  tight_layout()
+  savefig(@sprintf "figs/%s-%s-0.png" name symbol(f))
+  return fig, ax
 end

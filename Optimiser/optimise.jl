@@ -1,5 +1,8 @@
+include("plot.jl")
+include("functions.jl")
+
 const ϕ = 0.5 * (1.0 + sqrt(5.0))
-const global disp_progress = true
+const global disp_progress = false
 
 using Formatting
 
@@ -13,10 +16,14 @@ end
 
 """ Returns a functions which will approximate the gradient using symmetric
 finite difference """
-function gradient_approximator(f::Function, ϵ=1e-8)
+function gradient_approximator(f::Function, δ=1e-8; dims=1)
   # TODO keep track of how many times f has beeen evaluated
-  g(x) = (f(x+ϵ) - f(x-ϵ))./2ϵ
-  return g
+  if dims == 1
+    g(x) = (f(x + δ) - f(x - δ))/2δ
+  elseif dims == 2
+    g(x) = [(f(x+[δ; 0]) - f(x-[δ; 0]))/(2δ);
+            (f(x+[0; δ]) - f(x-[0; δ]))/(2δ)]
+  end
 end
 
 "Bracket the minimum of the function."

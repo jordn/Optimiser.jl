@@ -13,7 +13,9 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
   if length(contraints) > 0
     x_range = contraints
   else
-    x_range = repmat([-5 5], length(x0))
+    x1_max = max(1, abs(x0[1])*2.2)
+    x2_max = max(1, abs(x0[2])*2.2)
+    x_range = [-x1_max x1_max; -x2_max x2_max]
   end
 
   if plot
