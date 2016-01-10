@@ -125,14 +125,3 @@ function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000,
 	return pts
 
 end
-
-# Takes in two 1D arrays and creates a 2D grid
-rosenbrock(x,y) = (1 .- x).^2 .+ 100*(y .- x.^2).^2
-# Takes a column vector, or a matrix where each column is an input
-rosenbrock{T<:Number}(X::Array{T,2}) = rosenbrock(X[1,:], X[2,:])
-rosenbrock{T<:Number}(x::Array{T,1}) = rosenbrock(x[1], x[2])[]
-camel(x,y) = (4 .- 2.1 .*x.^2 .+ (1/3).*x.^4).*x.^2 .+ x.*y .+ (4 .* y.^2 .- 4).*y.^2
-camel{T<:Number}(X::Array{T,2}) = [camel(X[1,i], X[2,i]) for i in 1:size(X,2)]
-camel{T<:Number}(x::Array{T,1}) = camel(x[1], x[2])[]
-x0 = [0, -10];
-# pts = nelder_mead(rosenbrock, x0)

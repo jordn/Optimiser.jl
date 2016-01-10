@@ -2,7 +2,7 @@ include("plot.jl")
 include("functions.jl")
 
 const ϕ = 0.5 * (1.0 + sqrt(5.0))
-const global disp_progress = false
+const global disp_progress = true
 
 using Formatting
 
@@ -13,6 +13,13 @@ function print_progress(xa, xb, xc, fa, fb, fc, evals)
   end
 end
 
+"""Return a function that returns the jacobian
+(2D input, 1D output only)"""
+function jacobian(f::Function, δ=1e-8)
+  # g(x) = [(f(x+sparsevec(Dict(i=>δ),dims)) - f(x-sparsevec(Dict(i=>δ),dims)))./(2δ) for i in 1:dims]
+  g(x) = [(f(x+[δ; 0]) - f(x-[δ; 0]))./(2δ)
+          (f(x .+ [0; δ;]) - f(x .- [0; δ]))./(2δ);]
+end
 
 """ Returns a functions which will approximate the gradient using symmetric
 finite difference """
@@ -100,81 +107,131 @@ function satisfies_wolfe(pt, new_pt, step_size, direction; strong=true)
   return sufficient_decrease && sufficient_curvature
 end
 
-function minimise_scalar(f::Function, x0::Number, g::Function=gradient_approximator(f);
-     x_tolerance=0.001, grad_tolerance=1e-12, max_evals=100)
-     return minimise(f, vec([x0]), g; x_tolerance=x_tolerance,
-      grad_tolerance=grad_tolerance, max_evals=max_evals)
-end
+function minimise_2d(f::Function, x0::Vector, g::Function=gradient_approximator(f;dims=length(x0));
+  x_tolerance=0.001, grad_tolerance=1e-12, max_f_evals=100, contraints=[],
+  plot=false, plot_log=false)
+  tic();
+  f_evals = 0
+  g_evals = 0
+  iterations = 0
+  jacobian = gradient_approximator(f,dims=length(x0))
 
-function minimise(f::Function, x0::Vector, g::Function=gradient_approximator(f);
-   x_tolerance=0.001, grad_tolerance=1e-12, max_evals=100, plot=false)
-    tic();
-    evals = 0
-
-    println()
-    # fa < fc
-    xa, xb, xc, fa, fb, fc, pts, evals =  bracket(f, x0; max_evals=max_evals)
-    # TODO, if approximating gradient, each g_eval == 2 * f_eval. Count this.
-    gradient = g(xb); evals += 1
-    pt = (xb, fb, gradient) # Current min point
-    push!(pts, pt)
-
-    converged(step=xc-xa) = (step <= x_tolerance
-                            || abs(gradient) <= grad_tolerance)
-
-    while !converged()
-      print_progress(xa, xb, xc, fa, fb, fc, evals)
-
-      direction = gradient <= 0 ? 1 : -1 # (p_k)
-      if direction > 0
-        step_size = (1-(1/ϕ))*(xc-xb)
-      else
-        step_size = (1-(1/ϕ))*(xb-xa)
-      end
-
-      while true
-        x_new = xb + step_size*direction
-        f_new = f(x_new); evals += 1
-        g_new = g(x_new); evals += 1
-        xa, xb, xc, fa, fb, fc = rebracket(xa, xb, xc, x_new, fa, fb, fc, f_new)
-        print_progress(xa, xb, xc, fa, fb, fc, evals)
-        new_pt = (x_new, f_new, g_new)
-        satisfies_wolfe(pt, new_pt, step_size, direction) && break
-        converged(step_size) && break
-        step_size = step_size*(1-(1/ϕ)) # Step length (α)
-      end
-
-      if evals > max_evals
-        error("Too many evaluations.")
-      end
-      gradient = g(xb); evals += 1
-      pt = (xb, fb, gradient)
-      push!(pts, pt)
-
+  # PLOT
+  if plot
+    if length(contraints) > 0
+      x_range = contraints
+    else
+      x1_max = max(1, abs(x0[1])*2)
+      x2_max = max(1, abs(x0[2])*2)
+      x_range = [-x1_max x1_max; -x2_max x2_max]
     end
-    print_progress(xa, xb, xc, fa, fb, fc, evals)
-    elapsed_time = toq();
-    return summarise(pts, evals, elapsed_time)
+    fig, ax1, ax2 = plot_contour(f, x_range; name="tabu", plot_log=plot_log)
+  end
+
+  # TODO, if approximating gradient, each g_eval == 2 * f_eval. Count this.
+  normalise(x) = x/norm(x)
+
+  pts = []
+  x = x0
+  val = f(x); f_evals += 1;
+
+  while iterations <= 2 && f_evals <= max_f_evals
+    iterations += 1
+    gradient = jacobian(x); g_evals += 1
+    direction = -normalise(gradient)
+    pt = (x, val, gradient)
+    push!(pts, pt)
+    if plot
+      ax1[:plot]([x[1]], [x[2]], plot_log?log(val):val, "o")
+      ax2[:plot](x[1], x[2], "o--")
+      ax2[:plot]([x[1], x[1]+direction[1]], [x[2], x[2]+direction[2]], "--")
+      if iterations%100 == 0
+        savefig(@sprintf "figs/gradient-%s-%d.png" symbol(f) iterations)
+      end
+      sleep(4)
+    end
+
+    # Line search in direction
+    f_line(scalar) = f(x + scalar*direction)
+    summary = line_search(f_line, 0, max_f_evals=10; plot=plot, plot_log=plot_log)
+    show(summary);
+    scalar = summary["x"]
+    val = summary["min_value"]
+    f_evals += summary["function_evals"]
+    x = scalar*direction # get back real x
+    println("scalar: ", scalar)
+    println(x , " => ", val )
+    println()
+  end
+  elapsed_time = toc();
+  println(pts,"\n", f_evals,"\n", elapsed_time)
+  return summarise(pts, f_evals, elapsed_time)
 end
 
-function minimise_multi(f::Function, x0, direction)
-  fNew(scalar) = f(x0 + scalar*direction)
-  summary = minimise_scalar(fNew, 0)
-  summary["x"] -= x0
-  return summary
-end
 
+function line_search(f::Function, x0::Number, g::Function=gradient_approximator(f);
+  x_tolerance=0.001, grad_tolerance=1e-12, max_f_evals=20, plot=false, plot_log=false)
+  tic();
+  converged(step=xc-xa) = (step <= x_tolerance
+                          || abs(gradient) <= grad_tolerance)
+
+  # fa < fc
+  xa, xb, xc, fa, fb, fc, pts, f_evals =  bracket(f, x0; max_evals=max_f_evals)
+
+  if plot
+    fig_line, ax_line = plot_line(f,[xa, xc]; name="line", plot_log=plot_log)
+  end
+
+  gradient = g(xb); g_evals = 1
+  pt = (xb, fb, gradient) # Current min point
+  push!(pts, pt)
+
+  while f_evals <= max_f_evals && !converged()
+    print_progress(xa, xb, xc, fa, fb, fc, f_evals)
+
+    direction = gradient <= 0 ? 1 : -1 # (p_k)
+    if direction > 0
+      step_size = (1-(1/ϕ))*(xc-xb)
+    else
+      step_size = (1-(1/ϕ))*(xb-xa)
+    end
+
+    while true
+      if plot
+        ax_line[:plot]([xa,xb,xc], plot_log ? log([fa, fb, fc]): [fa, fb, fc], "o--")
+        sleep(.1)
+      end
+      x_new = xb + step_size*direction
+      f_new = f(x_new); f_evals += 1
+      g_new = g(x_new); f_evals += 1
+      xa, xb, xc, fa, fb, fc = rebracket(xa, xb, xc, x_new, fa, fb, fc, f_new)
+      print_progress(xa, xb, xc, fa, fb, fc, f_evals)
+      new_pt = (x_new, f_new, g_new)
+      satisfies_wolfe(pt, new_pt, step_size, direction) && break
+      converged(step_size) && break
+      f_evals <= max_f_evals && break
+      step_size = step_size*(1-(1/ϕ)) # Step length (α)
+    end
+
+    gradient = g(xb); g_evals += 1
+    pt = (xb, fb, gradient)
+    push!(pts, pt)
+  end
+  print_progress(xa, xb, xc, fa, fb, fc, f_evals)
+  elapsed_time = toc();
+  return summarise(pts, f_evals, elapsed_time);
+end
 
 """ Return a consistent data structure summarising the results. """
-function summarise(pts,evals,elapsed_time)
-  # println(xa, " ", xb, " ", xc, " ", fa, " ", fb, " ", fc, " ", gradient,
-  # " ", evals, " ", elapsed_time)
+function summarise(pts, f_evals, elapsed_time=""; g_evals="")
+  println("::::SUMMARY::::")
   summary = Dict{ASCIIString, Any}(
     "x" => pts[length(pts)][1],
-    "minvalue" => pts[length(pts)][2],
+    "min_value" => pts[length(pts)][2],
     "gradient" => pts[length(pts)][3],
     "elapsed_time" => elapsed_time,
-    "evals" => evals,
+    "function_evals" => f_evals,
+    # "gradient_evals" => g_evals,
     "pts" => pts,
   )
   return summary

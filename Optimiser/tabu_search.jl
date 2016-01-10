@@ -130,7 +130,7 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     end
 
     if length(x_steps) > 0
-      v_steps = f(x_steps)
+      v_steps = [f(vec(x_steps[:,i])) for i in 1:size(x_steps,2)]
       f_evals += length(v_steps)
       # Select best direction
       v_current, index = findmin(v_steps)
@@ -181,19 +181,3 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
 
   return stm,mtm,ltm
 end
-
-# Takes in two 1D arrays and creates a 2D grid_size
-rosenbrock(x,y) = (1 .- x).^2 .+ 100*(y .- x.^2).^2
-# Takes a matrix where each column is an input, returns a vector
-rosenbrock{T<:Number}(X::Array{T,2}) = vec(rosenbrock(X[1,:], X[2,:]))
-# Takes a vector, returns a number
-rosenbrock{T<:Number}(x::Array{T,1}) = rosenbrock(x[1], x[2])[]
-
-camel(x,y) = (4 .- 2.1 .*x.^2 .+ (1/3).*x.^4).*x.^2 .+ x.*y .+ (4 .* y.^2 .- 4).*y.^2
-camel{T<:Number}(X::Array{T,2}) = [camel(X[1,i], X[2,i]) for i in 1:size(X,2)]
-camel{T<:Number}(x::Array{T,1}) = camel(x[1], x[2])[]
-
-x0 = [0.1, -1];
-# pts = tabu_search(rosenbrock, x0)
-
-# stm,mtm,ltm=tabu_search(rosenbrock, [-2.0, -1], 90; limits=[-2 2; -1 1] plot=true)

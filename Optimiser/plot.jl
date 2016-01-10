@@ -50,9 +50,9 @@ function plot_contour(f, x_range; name="contour", plot_log=false)
 end
 
 
-function plot_slice(f, x_range::Vector; name="line", plot_log=false)
+function plot_line(f, x_range::Vector; name="line", plot_log=false)
   # Plot (interactive) in external window as updating plots doesn't work in Jupyter
-  pygui(true); PyPlot.ion();
+  close("lineplot"); pygui(true); PyPlot.ion();
   n = 200
   x = linspace(x_range[1], x_range[2], n);
   v = zeros(n)
@@ -63,8 +63,8 @@ function plot_slice(f, x_range::Vector; name="line", plot_log=false)
   else
     v = [f(x_i) for x_i in x]
   end
-  # fig = figure("sliceplot", figsize=(10,10))
-  fig = figure()
+  fig = figure("lineplot")
+  # fig = figure()
   # ax = fig[:add_axes]()
 
   # ax[:plot](x, v)

@@ -10,4 +10,5 @@ logrosenbrock(x::Vector) = log(rosenbrock(x))
 # Takes a vector, returns a number
 
 camel(x::Vector) = (4 - 2.1 *x[1]^2 + (1/3)*x[1]^4)*x[1]^2 + x[1]*x[2] + (4 * x[2]^2 - 4)*x[2]^2
-# camel{T<:Number}(X::Array{T,2}) = [camel(X[1,i], X[2,i]) for i in 1:size(X,2)]
+logcamel(x::Vector) = log(camel(x)+1.05)
+camel{T<:Number}(X::Array{T,2}) = [camel(X[1,i], X[2,i]) for i in 1:size(X,2)]
