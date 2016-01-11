@@ -2,11 +2,12 @@ using Formatting
 include("plot.jl")
 include("functions.jl")
 include("matrix_functions.jl")
-include("converged.jl")
+include("convergence.jl")
+include("summarise.jl")
 
 srand(567)
 const ϕ = golden
-const global disp_progress = false
+const global disp_progress = true
 normalise(x) = x/norm(x)
 
 function print_progress(xa, xb, xc, fa, fb, fc, evals)
@@ -115,6 +116,7 @@ function minimise_2d(f::Function,
                      g::Function=gradient_approximator(f;dims=length(x0));
                      method="steepest_descent",
                      x_tol=1e-8,
+                     f_tol=1e-8,
                      grad_tol=1e-12,
                      max_iterations=100,
                      max_f_evals=1000,
@@ -122,7 +124,8 @@ function minimise_2d(f::Function,
                      plot=false)
   tic();
   f_evals = 0; g_evals = 0; iterations = 0;
-  converged, x_converged, f_converged, grad_converged = false, false, false, false
+  converged_dict = create_converged_dict(x_tol=x_tol, f_tol=f_tol,
+                                        grad_tol=grad_tol)
 
   # PLOT
   if plot
@@ -144,7 +147,7 @@ function minimise_2d(f::Function,
   pt = (x, val, grad)
   push!(pts, pt)
 
-  while !converged && iterations < max_iterations && f_evals <= max_f_evals
+  while !converged_dict["converged"] && iterations < max_iterations && f_evals <= max_f_evals
     iterations += 1
     if method == "steepest_descent" || iterations == 1
       direction = -normalise(grad) #Steepest descent
@@ -183,20 +186,27 @@ function minimise_2d(f::Function,
     pt = (x, val, grad)
     push!(pts, pt)
     # println()
-    converged, x_converged, f_converged, grad_converged = convergence(x_step=α,
-       grad=grad, x_tol=x_tol, grad_tol=grad_tol)
+    converged_dict = convergence!(converged_dict; x_step=α, grad=grad;)
   end
+
   plot_training(pts)
   elapsed_time = toq();
   # println(pts,"\n", f_evals,"\n", elapsed_time)
-  return summarise(pts, f_evals, elapsed_time;
-   converged=converged, x_converged=x_converged,
-   f_converged=f_converged, grad_converged=grad_converged);
+  return summarise(pts, f_evals, elapsed_time; converged_dict=converged_dict);
 end
 
 
-function line_search(f::Function, x0::Number=0, g::Function=gradient_approximator(f);
-  direction=0, x_tol=1e-8, grad_tol=1e-12, max_f_evals=100, plot=false)
+function line_search(
+    f::Function,
+    x0::Number=0,
+    g::Function=gradient_approximator(f);
+    direction=0,
+    x_tol=1e-8,
+    f_tol=1e-8,
+    grad_tol=1e-12,
+    max_f_evals=100,
+    plot=false)
+
   tic();
   # TODO, save time by knowing direction, and sensible starting bracket width
 
@@ -210,9 +220,12 @@ function line_search(f::Function, x0::Number=0, g::Function=gradient_approximato
   grad = g(xb); g_evals = 1
   pt = (xb, fb, grad) # Current min point
   push!(pts, pt)
-  converged, x_converged, f_converged, grad_converged = false, false, false, false
 
-  while !converged && f_evals <= max_f_evals
+  converged_dict = create_converged_dict(x_tol=x_tol, f_tol=f_tol,
+                                        grad_tol=grad_tol)
+
+  # Search for minima
+  while !converged_dict["converged"] && f_evals <= max_f_evals
     print_progress(xa, xb, xc, fa, fb, fc, f_evals)
 
     direction = grad <= 0 ? 1 : -1 # (p_k)
@@ -222,7 +235,7 @@ function line_search(f::Function, x0::Number=0, g::Function=gradient_approximato
       step_size = (1-(1/ϕ))*(xb-xa)
     end
 
-    # Wolfe condition search
+    # Search for optimal α (step size)
     while true
       if plot
         ax_line[:plot]([xa,xb,xc], [fa, fb, fc], "o--")
@@ -233,15 +246,13 @@ function line_search(f::Function, x0::Number=0, g::Function=gradient_approximato
       g_new = g(x_new); f_evals += 1
       xa, xb, xc, fa, fb, fc = rebracket(xa, xb, xc, x_new, fa, fb, fc, f_new)
       print_progress(xa, xb, xc, fa, fb, fc, f_evals)
+      println("inner loop ", step_size)
       new_pt = (x_new, f_new, g_new)
       satisfies_wolfe(pt, new_pt, step_size, direction) && break
-      converged, x_converged, f_converged, grad_converged = convergence(
-          x_step=step_size, grad=grad, x_tol=x_tol, grad_tol=grad_tol)
-      converged && break;
       f_evals <= max_f_evals && break
       step_size = step_size*(1-(1/ϕ)) # Step length (α)
     end
-
+    convergence!(converged_dict; x_step=step_size, grad=grad)
     grad = g(xb); g_evals += 1
     pt = (xb, fb, grad)
     push!(pts, pt)
@@ -250,28 +261,31 @@ function line_search(f::Function, x0::Number=0, g::Function=gradient_approximato
   print_progress(xa, xb, xc, fa, fb, fc, f_evals)
   elapsed_time = toq();
   return summarise(pts, f_evals, elapsed_time;
-   converged=converged, x_converged=x_converged,
-   f_converged=f_converged, grad_converged=grad_converged);
+   converged_dict=converged_dict);
 end
 
 
 """ Linear conjugate gradient solver of form Ax = b"""
 function conjugate_gradients(A,b=randn(size(A,1)),x=zeros(length(b));grad_tol=1e-10)
-  r = -(A*x - b) # Analytic gradient
-  p = r      # Direction
+  r = -(A*x - b) # Analytic gradient/ residual
+  p = r      #
   rs_old = r'*r
-
-  for i = 1:length(b)
+  pts = []
+  pt = (x, 1, r)
+  push!(pts, pt)
+  for i = 1:length(b)*6
     Ap = A*p
     alpha = rs_old/(p'*Ap)
     x = x + alpha.*p
     r = r-alpha.*Ap
     rs_new = r'*r
+    pt = (x,1,r)
+    push!(pts, pt)
     sqrt(rs_new[]) <= grad_tol && break
     p = r+(rs_new/rs_old).*p
     rs_old = rs_new
   end
-  return x
+  return pts
 end
 
 function quadratic_conjugate_gradients(A,b=randn(size(A,1)),x0=zeros(length(b)); method="steepest_descent")
@@ -284,29 +298,4 @@ function quadratic_conjugate_gradients(A,b=randn(size(A,1)),x0=zeros(length(b));
   return summary
   # println(pts,"\n", f_evals,"\n", elapsed_time)
   # return summarise(pts, f_evals, elapsed_time)
-end
-
-""" Return a consistent data structure summarising the results. """
-function summarise(pts, f_evals, elapsed_time=""; g_evals="",
-  converged=false, x_converged=false, f_converged=false, grad_converged=false)
-  # println("::::SUMMARY::::")
-  summary = Dict{ASCIIString, Any}(
-    "x" => pts[length(pts)][1],
-    "min_value" => pts[length(pts)][2],
-    "gradient" => pts[length(pts)][3],
-    "elapsed_time" => elapsed_time,
-    "function_evals" => f_evals,
-    # "gradient_evals" => g_evals,
-    "pts" => pts,
-    "convergence" => (converged,
-      Dict(
-        "x_converged"=>x_converged,
-        "f_converged"=>f_converged,
-        "grad_converged"=>grad_converged
-      )
-    ),
-    "pts" => pts,
-    "pts" => pts,
-  )
-  return summary
 end

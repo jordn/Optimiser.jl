@@ -1,15 +1,18 @@
-include("optimise.jl")
+include("convergence.jl")
+include("functions.jl")
 include("plot.jl")
+include("summarise.jl")
+
 using PyPlot
 
 # Following the algorithm described in Lagarias et al
 # 'CONVERGENCE PROPERTIES OF THE NELDER–MEAD SIMPLEX METHOD IN LOW DIMENSIONS'
 # http://people.duke.edu/~hpgavin/ce200/Lagarias-98.pdf
-function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000,
-  x_tolerance=1e-6; contraints=[], plot=false)
-
+function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000;
+                     x_tol=1e-8, f_tol=1e-8, contraints=[], plot=false)
   # RNG seed for consistent comparisons
   srand(567)
+  tic()
 
   if length(contraints) > 0
     x_range = contraints
@@ -24,103 +27,108 @@ function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000,
 	end
 
 	const c_reflection, c_expansion, c_contraction, c_shrink = 1.0, 2.0, 0.5, 0.5
-	n = length(x0)
+  iteration = 0;
+  f_evals = 0;
+  converged_dict = create_converged_dict(x_tol=x_tol, f_tol=f_tol)
+
+  n = length(x0)
 	x = repmat(x0, 1, n+1)
-	f_eval = zeros(n+1)
+	val = zeros(n+1)
 	for i = 1:n
 		x[i,i] += 1
 	end
 
-	pts = []
+  pts = []
+	simplex = []
 	for i = 1:n+1
-		f_eval[i] = f(x[:,i])
-		push!(pts, (x[:,i], f_eval[i]))
+		val[i] = f(x[:,i]); f_evals += 1;
+		push!(simplex, (x[:,i], val[i]))
 	end
 
-	function converged(pts)
-		x = [pt[1] for pt in pts]
-		return norm(x[end] - x[1]) <= x_tolerance
-	end
+	while !converged_dict["converged"] && iteration <= max_iters && f_evals <= max_f_evals
+		iteration += 1
 
-	iterations = 0
-  f_evals
+    # Sort from best to worst
+		sort!(simplex, by=pt->pt[2])
 
-	while !converged(pts) && iterations < max_iters
-		iterations += 1
+    push!(pts, simplex[1])
 
 		if plot
-			x1 = [pt[1][1] for pt in pts]
-			x2 = [pt[1][2] for pt in pts]
-      v = [pt[2] for pt in pts]
-			x1, x2 = [x1; x1[1]], [x2; x2[1]] # Add vertex for simplex
+			x1 = [pt[1][1] for pt in simplex]
+			x2 = [pt[1][2] for pt in simplex]
+      v = [pt[2] for pt in simplex]
+			x1, x2 = [x1; x1[1]], [x2; x2[1]] # Add vertex to close simplex
 
-			# if iterations == 10
+			# if iteration == 10
 			# 	ax[:relim]()
 			# 	autoscale(tight=false)
 			# end
-
-      simplex = ax2[:plot](x1, x2, "o--")
-      if iterations%100 == 0
-        savefig(@sprintf "figs/tabu-%s-%d.png" symbol(f) iterations)
+      # simplex = ax1[:plot](x1, x2, v, "o--")
+      ax2[:plot](x1, x2, "o--")
+      if iteration%10 == 0
+        savefig(@sprintf "figs/tabu-%s-%d.png" symbol(f) iteration)
       end
-      sleep(0.4)
-
 		end
 
-		# Sort from best to worst
-		sort!(pts, by=pt->pt[2])
-
 		# x_bar, the centroid of the n best vertices
-		x_bar = sum(pt->pt[1], pts[1:n])./n
+		x_bar = sum(pt->pt[1], simplex[1:n])./n
 
 		# Reflection
-		x_reflection = x_bar + c_reflection*(x_bar - pts[n+1][1])
-		f_reflection = f(x_reflection)
-		if pts[1][2] <= f_reflection < pts[n][2]
-			pts[n+1] = (x_reflection, f_reflection)
+		x_reflection = x_bar + c_reflection*(x_bar - simplex[n+1][1])
+		f_reflection = f(x_reflection); f_evals += 1;
+		if simplex[1][2] <= f_reflection < simplex[n][2]
+			simplex[n+1] = (x_reflection, f_reflection)
 			continue
 		end
 
 		# Expansion
-		if f_reflection < pts[1][2]
+		if f_reflection < simplex[1][2]
 			x_expansion = x_bar + c_expansion*(x_reflection - x_bar)
-			f_expansion = f(x_expansion)
+			f_expansion = f(x_expansion); f_evals += 1;
 			if f_expansion < f_reflection
-				pts[n+1] = (x_expansion, f_expansion)
+				simplex[n+1] = (x_expansion, f_expansion)
 			else
-				pts[n+1] = (x_reflection, f_reflection)
+				simplex[n+1] = (x_reflection, f_reflection)
 			end
 			continue
 		end
 
 		# Contraction
-		if pts[n][2] <= f_reflection < pts[n+1][2]
+		if simplex[n][2] <= f_reflection < simplex[n+1][2]
 			# Outside contraction
 			x_outside_contraction = x_bar + c_contraction*(x_reflection - x_bar)
-			f_outside_contraction = f(x_outside_contraction)
+			f_outside_contraction = f(x_outside_contraction); f_evals += 1;
 			if f_outside_contraction <= f_reflection
-				pts[n+1] = (x_outside_contraction, f_outside_contraction)
+				simplex[n+1] = (x_outside_contraction, f_outside_contraction)
 				continue
 			end
 
 			# Inside contraction
-			if f_reflection >= pts[n+1][2]
+			if f_reflection >= simplex[n+1][2]
 				x_inside_contraction = x_bar - c_contraction*(x_reflection - x_bar)
-				f_inside_contraction = f(x_inside_contraction)
-				if f_inside_contraction < pts[n+1][2]
-					pts[n+1] = (x_inside_contraction, f_inside_contraction)
+				f_inside_contraction = f(x_inside_contraction); f_evals += 1;
+				if f_inside_contraction < simplex[n+1][2]
+					simplex[n+1] = (x_inside_contraction, f_inside_contraction)
+          continue
 				end
 			end
 		end
 
-		# Shrink
+		# Shrink simplex
 		for i = 2:n+1
-			x_i = pts[1][1] + c_shrink*(pts[i][1] - pts[1][1])
-			f_i = f(x_i)
-			pts[i] = (x_i, f_i)
+			x_i = simplex[1][1] + c_shrink*(simplex[i][1] - simplex[1][1])
+			f_i = f(x_i) ; f_evals += 1;
+			simplex[i] = (x_i, f_i)
 		end
-	end
 
-	return pts
+    x = [pt[1] for pt in simplex]
+    val = [pt[2] for pt in simplex]
+    x_dist = norm(x[end] - x[1])
+    val_dist = norm(val[end] - val[1])
+    convergence!(converged_dict; x_step=x_dist, f_step=val_dist)
+
+	end
+  elapsed_time = toc()
+	return summarise(simplex, f_evals, elapsed_time; converged_dict=converged_dict)
 
 end

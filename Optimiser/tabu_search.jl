@@ -1,11 +1,12 @@
-include("optimise.jl")
+include("convergence.jl")
 include("plot.jl")
+include("summarise.jl")
 
 using PyPlot
 using StatsBase
 
 function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
-  max_f_evals=1000, x_tolerance=1e-6; contraints=[], plot=false)
+  max_f_evals=1000; x_tol=1e-8, f_tol=1e-8, contraints=[], plot=false)
 
   # RNG seed for consistent comparisons
   srand(567)
@@ -85,7 +86,6 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
   hypers = [STM_SIZE, MTM_SIZE, TRIGGER_INTENSIFICATION, TRIGGER_DIVERSIFICATION,
     TRIGGER_STEP_SIZE_REDUCTION, STEP_SIZE_MULTIPLIER]
 
-  converged() = minimum(step_size .<= x_tolerance)
 
   dims = length(x0)
 
@@ -97,8 +97,10 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
   counter = 0
   f_evals = 1
 
+  converged_dict = create_converged_dict(x_tol=x_tol, f_tol=f_tol)
 
-  while !converged(step_size) && f_evals <= max_f_evals && iterations <= max_iters
+  while !converged_dict["converged"] && f_evals <= max_f_evals && iterations <= max_iters
+    # Startof each loop witha new base point
     update_memory(x_base, v_base)
 
     iterations += 1
@@ -176,7 +178,7 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
       counter = 0
     end
     x_base, v_base = x_current, v_current
-
+    convergence!(converged_dict; x_step=step_size)
   end
 
   return stm,mtm,ltm
