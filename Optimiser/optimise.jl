@@ -114,17 +114,15 @@ function minimise_2d(f::Function,
                      x0::Vector,
                      g::Function=gradient_approximator(f;dims=length(x0));
                      method="steepest_descent",
-                     x_tolerance=0.001,
-                     grad_tolerance=1e-12,
-                     max_iterations=20,
+                     x_tol=1e-8,
+                     grad_tol=1e-12,
+                     max_iterations=100,
                      max_f_evals=1000,
                      contraints=[],
                      plot=false)
   tic();
-  f_evals = 0
-  g_evals = 0
-  iterations = 0
-  jacobian = gradient_approximator(f,dims=length(x0))
+  f_evals = 0; g_evals = 0; iterations = 0;
+  converged, x_converged, f_converged, grad_converged = false, false, false, false
 
   # PLOT
   if plot
@@ -135,20 +133,19 @@ function minimise_2d(f::Function,
       x2_max = max(1, abs(x0[2])*2)
       x_range = [-x1_max x1_max; -x2_max x2_max]
     end
-    fig, ax1, ax2 = plot_contour(f, x_range; name="tabu")
+    fig, ax1, ax2 = plot_contour(f, x_range; name=method)
   end
 
   # TODO, if approximating gradient, each g_eval == 2 * f_eval. Count this.
   pts = []
   x = x0
   val = f(x); f_evals += 1;
-  
-  while iterations < max_iterations && f_evals <= max_f_evals
-    iterations += 1
-    grad = jacobian(x); g_evals += 1
-    pt = (x, val, grad)
-    push!(pts, pt)
+  grad = g(x); g_evals += 1
+  pt = (x, val, grad)
+  push!(pts, pt)
 
+  while !converged && iterations < max_iterations && f_evals <= max_f_evals
+    iterations += 1
     if method == "steepest_descent" || iterations == 1
       direction = -normalise(grad) #Steepest descent
     elseif method == "conjugate_gradients"
@@ -159,15 +156,12 @@ function minimise_2d(f::Function,
       direction = normalise(beta[]*direction_prev - grad)
     end
 
-    # direction = copy(normalise(new_direction))
-    # println( "direction(saagain) ", direction)
-
     if plot
       ax1[:plot]([x[1]], [x[2]], val, "o")
       ax2[:plot](x[1], x[2], "o--")
       ax2[:plot]([x[1], x[1]+direction[1]], [x[2], x[2]+direction[2]], "--")
       if iterations%100 == 0
-        savefig(@sprintf "figs/gradient-%s-%d.png" symbol(f) iterations)
+        savefig(@sprintf "figs/%s-%s-%d.png" method symbol(f) iterations)
       end
       sleep(.1)
     end
@@ -180,31 +174,31 @@ function minimise_2d(f::Function,
     val = summary["min_value"]
     f_evals += summary["function_evals"]
     x = x + α*direction # get back real x
-    println("step_size: ", α)
-    println(x , " => ", val )
-    println( "direction ", direction)
+    grad = g(x); g_evals += 1
+    # println("step_size: ", α)
+    # println(x , " => ", val )
+    # println( "direction ", direction)
     grad_prev = copy(grad)
     direction_prev = copy(direction)
-    println()
-    converged("x_step"=>α, "grad"=>grad, x_tolerance=x_tolerance, grad_tolerance=grad_tolerance) && break;
+    pt = (x, val, grad)
+    push!(pts, pt)
+    # println()
+    converged, x_converged, f_converged, grad_converged = convergence(x_step=α,
+       grad=grad, x_tol=x_tol, grad_tol=grad_tol)
   end
-  elapsed_time = toc();
-  println(pts,"\n", f_evals,"\n", elapsed_time)
-  return summarise(pts, f_evals, elapsed_time)
+  plot_training(pts)
+  elapsed_time = toq();
+  # println(pts,"\n", f_evals,"\n", elapsed_time)
+  return summarise(pts, f_evals, elapsed_time;
+   converged=converged, x_converged=x_converged,
+   f_converged=f_converged, grad_converged=grad_converged);
 end
 
 
 function line_search(f::Function, x0::Number=0, g::Function=gradient_approximator(f);
-  direction=0, x_tolerance=0.001, grad_tolerance=1e-12, max_f_evals=20, plot=false)
+  direction=0, x_tol=1e-8, grad_tol=1e-12, max_f_evals=100, plot=false)
   tic();
   # TODO, save time by knowing direction, and sensible starting bracket width
-  # # If we have a direction (pointing downhill) can save evaluations by initally
-  # # bracketting only forwards
-  # if direction > 0
-  #   xa, xb, xc = x0, x0*ϕ, x0*ϕ*ϕ
-  # elseif x0 != 0
-  #   xa, xb, xc = x0, x0*ϕ, x0+ϕ
-  # end
 
   # fa < fc
   xa, xb, xc, fa, fb, fc, pts, f_evals =  bracket(f, x0; max_evals=max_f_evals)
@@ -216,8 +210,9 @@ function line_search(f::Function, x0::Number=0, g::Function=gradient_approximato
   grad = g(xb); g_evals = 1
   pt = (xb, fb, grad) # Current min point
   push!(pts, pt)
+  converged, x_converged, f_converged, grad_converged = false, false, false, false
 
-  while f_evals <= max_f_evals
+  while !converged && f_evals <= max_f_evals
     print_progress(xa, xb, xc, fa, fb, fc, f_evals)
 
     direction = grad <= 0 ? 1 : -1 # (p_k)
@@ -227,6 +222,7 @@ function line_search(f::Function, x0::Number=0, g::Function=gradient_approximato
       step_size = (1-(1/ϕ))*(xb-xa)
     end
 
+    # Wolfe condition search
     while true
       if plot
         ax_line[:plot]([xa,xb,xc], [fa, fb, fc], "o--")
@@ -239,7 +235,9 @@ function line_search(f::Function, x0::Number=0, g::Function=gradient_approximato
       print_progress(xa, xb, xc, fa, fb, fc, f_evals)
       new_pt = (x_new, f_new, g_new)
       satisfies_wolfe(pt, new_pt, step_size, direction) && break
-      converged("x_step"=>step_size, "grad"=>grad, x_tolerance=x_tolerance, grad_tolerance=grad_tolerance) && break;
+      converged, x_converged, f_converged, grad_converged = convergence(
+          x_step=step_size, grad=grad, x_tol=x_tol, grad_tol=grad_tol)
+      converged && break;
       f_evals <= max_f_evals && break
       step_size = step_size*(1-(1/ϕ)) # Step length (α)
     end
@@ -247,37 +245,51 @@ function line_search(f::Function, x0::Number=0, g::Function=gradient_approximato
     grad = g(xb); g_evals += 1
     pt = (xb, fb, grad)
     push!(pts, pt)
-    converged("x_step"=>step_size, "grad"=>grad, x_tolerance=x_tolerance, grad_tolerance=grad_tolerance) && break;
+
   end
   print_progress(xa, xb, xc, fa, fb, fc, f_evals)
-  elapsed_time = toc();
-  return summarise(pts, f_evals, elapsed_time);
+  elapsed_time = toq();
+  return summarise(pts, f_evals, elapsed_time;
+   converged=converged, x_converged=x_converged,
+   f_converged=f_converged, grad_converged=grad_converged);
 end
 
+
 """ Linear conjugate gradient solver of form Ax = b"""
-function conjugate_gradients(A,b,x)
-  r = b-A*x
-  p = r
-  rsold = r'*r
+function conjugate_gradients(A,b=randn(size(A,1)),x=zeros(length(b));grad_tol=1e-10)
+  r = -(A*x - b) # Analytic gradient
+  p = r      # Direction
+  rs_old = r'*r
 
   for i = 1:length(b)
     Ap = A*p
-    alpha = rsold/(p'*Ap)
+    alpha = rs_old/(p'*Ap)
     x = x + alpha.*p
     r = r-alpha.*Ap
-    rsnew = r'*r
-    if sqrt(rsnew[]) < 1e-10
-      break
-    end
-    p = r+(rsnew/rsold).*p
-    rsold = rsnew
+    rs_new = r'*r
+    sqrt(rs_new[]) <= grad_tol && break
+    p = r+(rs_new/rs_old).*p
+    rs_old = rs_new
   end
   return x
 end
 
+function quadratic_conjugate_gradients(A,b=randn(size(A,1)),x0=zeros(length(b)); method="steepest_descent")
+  f(x::Vector) = (1/2 * x'*A*x - b'*x)[]
+  g(x::Vector) = vec(A*x - b)
+  tic();
+  summary = minimise_2d(f,x0,g,method="conjugate_gradients")
+  println(summary["x"])
+  elapsed_time = toq();
+  return summary
+  # println(pts,"\n", f_evals,"\n", elapsed_time)
+  # return summarise(pts, f_evals, elapsed_time)
+end
+
 """ Return a consistent data structure summarising the results. """
-function summarise(pts, f_evals, elapsed_time=""; g_evals="")
-  println("::::SUMMARY::::")
+function summarise(pts, f_evals, elapsed_time=""; g_evals="",
+  converged=false, x_converged=false, f_converged=false, grad_converged=false)
+  # println("::::SUMMARY::::")
   summary = Dict{ASCIIString, Any}(
     "x" => pts[length(pts)][1],
     "min_value" => pts[length(pts)][2],
@@ -285,6 +297,15 @@ function summarise(pts, f_evals, elapsed_time=""; g_evals="")
     "elapsed_time" => elapsed_time,
     "function_evals" => f_evals,
     # "gradient_evals" => g_evals,
+    "pts" => pts,
+    "convergence" => (converged,
+      Dict(
+        "x_converged"=>x_converged,
+        "f_converged"=>f_converged,
+        "grad_converged"=>grad_converged
+      )
+    ),
+    "pts" => pts,
     "pts" => pts,
   )
   return summary
