@@ -1,8 +1,11 @@
+using Formatting
 include("plot.jl")
 include("functions.jl")
-using Formatting
+include("matrix_functions.jl")
+include("converged.jl")
 
-const ϕ = 0.5 * (1.0 + sqrt(5.0))
+srand(567)
+const ϕ = golden
 const global disp_progress = false
 normalise(x) = x/norm(x)
 
@@ -139,21 +142,21 @@ function minimise_2d(f::Function,
   pts = []
   x = x0
   val = f(x); f_evals += 1;
-
+  
   while iterations < max_iterations && f_evals <= max_f_evals
     iterations += 1
-    gradient = jacobian(x); g_evals += 1
-    pt = (x, val, gradient)
+    grad = jacobian(x); g_evals += 1
+    pt = (x, val, grad)
     push!(pts, pt)
 
     if method == "steepest_descent" || iterations == 1
-      direction = -normalise(gradient) #Steepest descent
+      direction = -normalise(grad) #Steepest descent
     elseif method == "conjugate_gradients"
       # Original method
       # beta = gradient'*gradient / (gradient_prev'*gradient_prev)
       # Polak and Ribiere method
-      beta = gradient'*(gradient-gradient_prev) / (gradient_prev'*gradient_prev)
-      direction = normalise(beta[]*direction_prev - gradient)
+      beta = grad'*(grad-grad_prev) / (grad_prev'*grad_prev)
+      direction = normalise(beta[]*direction_prev - grad)
     end
 
     # direction = copy(normalise(new_direction))
@@ -173,7 +176,6 @@ function minimise_2d(f::Function,
     f_line(α) = f(x + α*direction)
     summary = line_search(f_line, 0, max_f_evals=max_f_evals-f_evals;
                           plot=false, direction=1)
-    # show(summary);
     α = summary["x"]
     val = summary["min_value"]
     f_evals += summary["function_evals"]
@@ -181,9 +183,10 @@ function minimise_2d(f::Function,
     println("step_size: ", α)
     println(x , " => ", val )
     println( "direction ", direction)
-    gradient_prev = copy(gradient)
+    grad_prev = copy(grad)
     direction_prev = copy(direction)
     println()
+    converged("x_step"=>α, "grad"=>grad, x_tolerance=x_tolerance, grad_tolerance=grad_tolerance) && break;
   end
   elapsed_time = toc();
   println(pts,"\n", f_evals,"\n", elapsed_time)
@@ -194,9 +197,6 @@ end
 function line_search(f::Function, x0::Number=0, g::Function=gradient_approximator(f);
   direction=0, x_tolerance=0.001, grad_tolerance=1e-12, max_f_evals=20, plot=false)
   tic();
-  converged(step=xc-xa) = (step <= x_tolerance
-                          || abs(gradient) <= grad_tolerance)
-
   # TODO, save time by knowing direction, and sensible starting bracket width
   # # If we have a direction (pointing downhill) can save evaluations by initally
   # # bracketting only forwards
@@ -213,14 +213,14 @@ function line_search(f::Function, x0::Number=0, g::Function=gradient_approximato
     fig_line, ax_line = plot_line(f,[xa, xc]; name="line")
   end
 
-  gradient = g(xb); g_evals = 1
-  pt = (xb, fb, gradient) # Current min point
+  grad = g(xb); g_evals = 1
+  pt = (xb, fb, grad) # Current min point
   push!(pts, pt)
 
-  while f_evals <= max_f_evals && !converged()
+  while f_evals <= max_f_evals
     print_progress(xa, xb, xc, fa, fb, fc, f_evals)
 
-    direction = gradient <= 0 ? 1 : -1 # (p_k)
+    direction = grad <= 0 ? 1 : -1 # (p_k)
     if direction > 0
       step_size = (1-(1/ϕ))*(xc-xb)
     else
@@ -239,40 +239,41 @@ function line_search(f::Function, x0::Number=0, g::Function=gradient_approximato
       print_progress(xa, xb, xc, fa, fb, fc, f_evals)
       new_pt = (x_new, f_new, g_new)
       satisfies_wolfe(pt, new_pt, step_size, direction) && break
-      converged(step_size) && break
+      converged("x_step"=>step_size, "grad"=>grad, x_tolerance=x_tolerance, grad_tolerance=grad_tolerance) && break;
       f_evals <= max_f_evals && break
       step_size = step_size*(1-(1/ϕ)) # Step length (α)
     end
 
-    gradient = g(xb); g_evals += 1
-    pt = (xb, fb, gradient)
+    grad = g(xb); g_evals += 1
+    pt = (xb, fb, grad)
     push!(pts, pt)
+    converged("x_step"=>step_size, "grad"=>grad, x_tolerance=x_tolerance, grad_tolerance=grad_tolerance) && break;
   end
   print_progress(xa, xb, xc, fa, fb, fc, f_evals)
   elapsed_time = toc();
   return summarise(pts, f_evals, elapsed_time);
 end
 
-# """ Linear conjugate gradient solver of form Ax = b"""
-# function conjugate_gradients(A,b,x)
-#   r = b-A*x
-#   p = r
-#   rsold = r'*r
-#
-#   for i = 1:length(b)
-#     Ap = A*p
-#     alpha = rsold/(p'*Ap)
-#     x = x + alpha.*p
-#     r = r-alpha.*Ap
-#     rsnew = r'*r
-#     if sqrt(rsnew[]) < 1e-10
-#       break
-#     end
-#     p = r+(rsnew/rsold).*p
-#     rsold = rsnew
-#   end
-#   return x
-# end
+""" Linear conjugate gradient solver of form Ax = b"""
+function conjugate_gradients(A,b,x)
+  r = b-A*x
+  p = r
+  rsold = r'*r
+
+  for i = 1:length(b)
+    Ap = A*p
+    alpha = rsold/(p'*Ap)
+    x = x + alpha.*p
+    r = r-alpha.*Ap
+    rsnew = r'*r
+    if sqrt(rsnew[]) < 1e-10
+      break
+    end
+    p = r+(rsnew/rsold).*p
+    rsold = rsnew
+  end
+  return x
+end
 
 """ Return a consistent data structure summarising the results. """
 function summarise(pts, f_evals, elapsed_time=""; g_evals="")

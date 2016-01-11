@@ -98,7 +98,7 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
   f_evals = 1
 
 
-  while !converged() && f_evals <= max_f_evals && iterations <= max_iters
+  while !converged(step_size) && f_evals <= max_f_evals && iterations <= max_iters
     update_memory(x_base, v_base)
 
     iterations += 1
