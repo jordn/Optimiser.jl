@@ -1,15 +1,27 @@
 include("convergence.jl")
+include("functions.jl")
 include("plot.jl")
 include("summarise.jl")
+include("utilities.jl")
 
 using PyPlot
 using StatsBase
 
-function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
-  max_f_evals=1000; x_tol=1e-8, f_tol=1e-8, contraints=[], plot=false)
+function tabu_search(
+  f::Function,
+  x0::Vector{Float64};
+  max_iters=1000,
+  max_f_evals=1000,
+  x_tol=1e-8,
+  f_tol=1e-8,
+  contraints=[],
+  plot=false,
+  logging=false)
 
   # RNG seed for consistent comparisons
   srand(567)
+  tic()
+  dims = length(x0)
 
   if length(contraints) > 0
     x_range = contraints
@@ -30,10 +42,35 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     end
     stm = [stm; (x, v)] # Equivalent to push! but handles the unintialised array
 
+    function add_distinct_point(x,v)
+      close_to_existing_point = false
+
+      if DISSIMILARITY_FLAG
+        for i in 1:length(mtm)
+          if norm(mtm[i][1]-x) < distance_threshold
+            close_to_existing_point = true
+            if norm(mtm[i][1]-x) <= similar_threshold && v < mtm[i][2]
+              mtm[i] = (x,v) # New point is close enough to existing point
+            end
+            break
+          end
+        end
+      end
+
+      if !close_to_existing_point
+        mtm = [mtm; (x, v)]
+        mtm = sort(mtm, by=pt->pt[2])[1:min(end, MTM_SIZE)]
+      end
+    end
+
     # MTM is sorted list of the N best points
-    if (length(mtm) < MTM_SIZE || v < mtm[end][2]) && !((x, v) in mtm)
-      mtm = [mtm; (x, v)]
-      mtm = sort(mtm, by=pt->pt[2])[1:min(end, MTM_SIZE)]
+    if !((x,v) in mtm) && (length(mtm) < MTM_SIZE || v < mtm[end][2])
+      if length(mtm) == 0 || v < mtm[1][2] # Best I ever had
+        mtm = [(x, v); mtm]
+        mtm = mtm[1:min(end, MTM_SIZE)]
+      else
+        add_distinct_point(x,v)
+      end
     end
 
     # Long Term Memory records which areas of search space have had attention.
@@ -66,46 +103,42 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     return [x1_bins[x1_index], x2_bins[x2_index]]
   end
 
-  # Short Term Memory (records last N locations)
+
   const STM_SIZE = 7
-  stm = Vector[]
-
-  # Medium Term Memory (records the N best solutions)
   const MTM_SIZE = 4
-  mtm = Vector[]
-
-  # Long Term Memory records which areas of search space have had attention.
-  ltm = Array(Float64,2,0)
-
   const TRIGGER_INTENSIFICATION = 10 # number of iteraions without MTM changing
   const TRIGGER_DIVERSIFICATION = 15
   const TRIGGER_STEP_SIZE_REDUCTION = 25 # number of iteraions without MTM changing
   const STEP_SIZE_MULTIPLIER = 0.5
+  const INITIAL_STEP_SIZE = 0.08
+  const DISSIMILARITY_FLAG = false
+  const distance_threshold = 0.01 # Distance below which points are "close"
+  const similar_threshold = 0.0005 # Points are similar, keep best.
+
+  stm = Vector[] # Short Term Memory (records last N locations)
+  mtm = Vector[] # Medium Term Memory (records the N best solutions)
+  ltm = Array(Float64,dims,0) # Long Term Memory records all x
+  log = Array(Float64,MTM_SIZE,0)
 
   # TODO, use hyperparmeters to sat figure save name
   hypers = [STM_SIZE, MTM_SIZE, TRIGGER_INTENSIFICATION, TRIGGER_DIVERSIFICATION,
-    TRIGGER_STEP_SIZE_REDUCTION, STEP_SIZE_MULTIPLIER]
+    TRIGGER_STEP_SIZE_REDUCTION, STEP_SIZE_MULTIPLIER, INITIAL_STEP_SIZE]
 
-
-  dims = length(x0)
-
-  # Uniform step_size in each direction for now. TODO optimise.
-  step_size = ones(dims)*0.08
+  # Uniform step_size in each direction
+  step_size = ones(dims)*INITIAL_STEP_SIZE
   x_base = x0
   v_base = f(x_base)
-  iterations = 0
+  iteration = 0
   counter = 0
   f_evals = 1
 
   converged_dict = create_converged_dict(x_tol=x_tol, f_tol=f_tol)
 
-  while !converged_dict["converged"] && f_evals <= max_f_evals && iterations <= max_iters
+  while true
     # Startof each loop witha new base point
     update_memory(x_base, v_base)
 
-    iterations += 1
-    println("$iterations $counter $f_evals")
-
+    iteration += 1
     v_base = f(x_base)
     f_evals += 1
     current_best_v = mtm[1][2]
@@ -113,10 +146,13 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
     if plot
       ax1[:plot]([x_base[1]], [x_base[2]], v_base, "o--")
       ax2[:plot](x_base[1], x_base[2], "o--")
-      if iterations%100 == 0
-        savefig(@sprintf "figs/tabu-%s-%d.png" symbol(f) iterations)
+      if iteration%100 == 0
+        savefig(@sprintf "figs/tabu-%s-%d.png" symbol(f) iteration)
       end
-      # sleep(0.04)
+    end
+    if logging
+      mtm_vals = [pt[2] for pt in mtm]
+      log = [log pad(mtm_vals, MTM_SIZE, NaN)] # Log MTM over time
     end
 
     x_steps = Array(Float64,2,0)
@@ -163,23 +199,24 @@ function tabu_search(f::Function, x0::Vector{Float64}, max_iters=500,
       x_current = mean([pt[1] for pt in mtm])
       v_current = f(x_current)
       f_evals += 1
-      println("SEARCH INTENSIFICATION DANCE ༼ つ ◕_◕ ༽つ")
     elseif counter == TRIGGER_DIVERSIFICATION
-      println("SEARCH DIVERSIFICATION SHRUG ¯\_(ツ)_/¯")
       x_current = diversify(ltm)
       v_current = f(x_current)
       f_evals += 1
-      println("SEARCH DIVERSIFICATION MOVED TO ", x_current)
     elseif counter == TRIGGER_STEP_SIZE_REDUCTION
-      println("STEP SIZE REDUCED CUS WHY NOT RAAAHH (╯°□°）╯︵ ┻━┻")
       step_size = step_size .* STEP_SIZE_MULTIPLIER
       x_current = mtm[1][1]
       v_current = mtm[1][2]
       counter = 0
     end
+
     x_base, v_base = x_current, v_current
     convergence!(converged_dict; x_step=step_size)
+    converged_dict["converged"] && break;
+    f_evals >= max_f_evals && break;
+    iteration >= max_iters && break;
   end
 
-  return stm,mtm,ltm
+  return summarise(mtm, f_evals, toq();
+                  converged_dict=converged_dict, log=log)
 end

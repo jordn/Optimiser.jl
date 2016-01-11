@@ -1,11 +1,13 @@
 include("convergence.jl")
 
 """ Return a consistent data structure summarising the results. """
-function summarise(pts, f_evals, elapsed_time=""; g_evals="",
-  converged_dict=convergence())
+function summarise(pts, f_evals, elapsed_time="";
+                  g_evals="",
+                  converged_dict="",
+                  log=[])
+
   best_pt = pts[length(pts)]
-  gradient
-  # println("::::SUMMARY::::")
+
   summary = Dict{ASCIIString, Any}(
     "x" => best_pt[1],
     "min_value" => best_pt[2],
@@ -16,5 +18,8 @@ function summarise(pts, f_evals, elapsed_time=""; g_evals="",
     "pts" => pts,
     "convergence" => converged_dict,
   )
+  if length(log) > 0
+    summary["log"] = log
+  end
   return summary
 end
