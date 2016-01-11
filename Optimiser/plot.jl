@@ -69,3 +69,46 @@ function plot_line(f, x_range::Vector; name="line")
   savefig(@sprintf "figs/%s-%s-0.png" name symbol(f))
   return fig, ax
 end
+
+function plot_training(pts; name="training")
+  # Plot (interactive) in external window as updating plots doesn't work in Jupyter
+  k = length(pts)
+  dims = length(pts[1][1])
+  x = Array(Float64,dims,0)
+  val = []
+  grad = Array(Float64,dims,0)
+  for pt in pts
+    x = [x pt[1]]
+    val = push!(val, pt[2])
+    grad = [grad pt[3]]
+  end
+  x_steps = [norm(x[i] - x[i-1]) for i in 2:k]
+  grad = [norm(grad[i]) for i in 1:k]
+
+  # fig = figure("training", figsize=(6,12))
+  # fig = figure("training")
+  # fig = figure("surfaceplot", figsize=(6,12))
+
+  fig, axarr = plt[:subplots](3, sharex=true)
+  # fig[:set_size_inches](6, 12)
+  axarr[1][:plot](2:k, x_steps, "x-", linewidth=2.0, color=(0.4,0.4,0.4))
+  axarr[1][:set_ylabel]("\Delta x")
+
+  axarr[2][:plot](1:k, val, "x-", linewidth=2.0, color=(0.4,0.4,0.4))
+  if minimum(val) > 0
+    axarr[2][:set_yscale]("log")
+    axarr[2][:set_ylabel]("f(x) [log scale]")
+  else
+    axarr[2][:set_ylabel]("f(x)")
+  end
+
+  axarr[3][:plot](1:k, grad, "x-", linewidth=2.0, color=(0.4,0.4,0.4))
+  axarr[3][:set_ylabel]("gradient [log scale]")
+  axarr[3][:set_yscale]("log")
+  xlabel("iteration")
+
+  axarr[1][:set_title](@sprintf "%s" name)
+  tight_layout()
+  savefig(@sprintf "figs/%s-0.png" name)
+  return fig, axarr
+end
