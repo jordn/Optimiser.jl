@@ -70,7 +70,7 @@ function nelder_mead(f::Function,
 
       ax2[:plot](x1, x2, "o--")
       if iteration%10 == 0
-        savefig(@sprintf "figs/tabu-%s-%d.eps" symbol(f) iteration)
+        savefig(@sprintf "figs/tabu-%s-%d.pdf" symbol(f) iteration)
       end
 		end
 

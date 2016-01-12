@@ -155,10 +155,11 @@ function tabu_search(f::Function,
     current_best_v = mtm[1][2]
 
     if plot
-      ax1[:plot]([x_base[1]], [x_base[2]], v_base, "o--")
-      ax2[:plot](x_base[1], x_base[2], "o--")
-      if iteration%100 == 0
-        savefig(@sprintf "figs/tabu-%s-%d.eps" symbol(f) iteration)
+      fig, ax2 = plot_tabu(f, x_range, stm, mtm, ltm, iteration; name="tabu")
+      paud
+      # ax2[:plot](x_base[1], x_base[2], "o--", color="r")
+      if iteration%10 == 0
+        savefig(@sprintf "figs/tabu-%s-%s-%04d.pdf" symbol(f) join(hypers, "-") iteration)
       end
     end
     if logging
@@ -226,6 +227,7 @@ function tabu_search(f::Function,
     converged_dict["converged"] && break;
     f_evals >= max_f_evals && break;
     iteration >= max_iters && break;
+    step_size[1] <= x_tol && break;
   end
 
   return summarise(mtm, f_evals, toq();

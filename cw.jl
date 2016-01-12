@@ -17,6 +17,7 @@ function multirun(method::Symbol, problem::Symbol=:camel, runs=4)
   end
 
   if method == :tabu_search
+    method_string = "Tabu Search"
     optimiser(x) = tabu_search(func,
                               x;
                               max_f_evals=1000,
@@ -25,6 +26,7 @@ function multirun(method::Symbol, problem::Symbol=:camel, runs=4)
                               logging=true)
 
   elseif method == :nelder_mead
+    method_string = "Nelder-Mead"
     optimiser(x) = nelder_mead(func,
                               x;
                               max_f_evals=1000,
@@ -48,9 +50,10 @@ function multirun(method::Symbol, problem::Symbol=:camel, runs=4)
   if method == :tabu_search
     plot_mtms(results, known_minimum=known_minimum)
   end
+  
   plot_cumulative_solved(results,
                         known_minimum=known_minimum,
-                        method=method,
+                        method=method_string,
                         problem=problem)
 
   return results
