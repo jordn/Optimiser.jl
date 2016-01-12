@@ -10,17 +10,10 @@ const ϕ = golden
 const global disp_progress = true
 normalise(x) = x/norm(x)
 
-function print_progress(xa, xb, xc, fa, fb, fc, evals)
-  if disp_progress
-    const fmt = ">{}: ({: 2.4f}, {: 2.4f}, {: 2.4f}) = ({: 2.3f}, {: 2.3f}, {: 2.3f})\n"
-      printfmt(fmt, evals, xa, xb, xc, fa, fb, fc)
-  end
-end
 
 """Return a function that returns the jacobian
 (2D input, 1D output only)"""
 function jacobian(f::Function, δ=1e-8)
-  # g(x) = [(f(x+sparsevec(Dict(i=>δ),dims)) - f(x-sparsevec(Dict(i=>δ),dims)))./(2δ) for i in 1:dims]
   g(x) = [(f(x+[δ; 0]) - f(x-[δ; 0]))./(2δ)
           (f(x .+ [0; δ;]) - f(x .- [0; δ]))./(2δ);]
 end
@@ -53,7 +46,6 @@ function bracket(f::Function, xb=0; xa=xb-(1-1/ϕ), xc=xb+1/ϕ, max_evals=10)
   evals = 3
   pts = [(xb,fb,0.0)]
   while fb >= fa
-    print_progress(xa, xb, xc, fa, fb, fc, evals)
 
     xb, xc = xa, xb
     fb, fc = fa, fb
@@ -62,7 +54,6 @@ function bracket(f::Function, xb=0; xa=xb-(1-1/ϕ), xc=xb+1/ϕ, max_evals=10)
     xa = xa - ϕ*(xc-xb) # big jump
     fa = f(xa); evals += 1;
     while fa == fb && evals <= max_evals
-      print_progress(xa, xb, xc, fa, fb, fc, evals)
       xa = xa - ϕ*(xc-xb) # big jump
       fa = f(xa); evals += 1;
     end
@@ -75,7 +66,6 @@ function bracket(f::Function, xb=0; xa=xb-(1-1/ϕ), xc=xb+1/ϕ, max_evals=10)
     xa, xc = xc, xa
     fa, fc = fc, fa
   end
-  print_progress(xa, xb, xc, fa, fb, fc, evals)
   return xa, xb, xc, fa, fb, fc, pts, evals
 end
 
@@ -226,7 +216,6 @@ function line_search(
 
   # Search for minima
   while !converged_dict["converged"] && f_evals <= max_f_evals
-    print_progress(xa, xb, xc, fa, fb, fc, f_evals)
 
     direction = grad <= 0 ? 1 : -1 # (p_k)
     if direction > 0
@@ -245,7 +234,6 @@ function line_search(
       f_new = f(x_new); f_evals += 1
       g_new = g(x_new); f_evals += 1
       xa, xb, xc, fa, fb, fc = rebracket(xa, xb, xc, x_new, fa, fb, fc, f_new)
-      print_progress(xa, xb, xc, fa, fb, fc, f_evals)
       println("inner loop ", step_size)
       new_pt = (x_new, f_new, g_new)
       satisfies_wolfe(pt, new_pt, step_size, direction) && break
@@ -258,7 +246,6 @@ function line_search(
     push!(pts, pt)
 
   end
-  print_progress(xa, xb, xc, fa, fb, fc, f_evals)
   elapsed_time = toq();
   return summarise(pts, f_evals, elapsed_time;
    converged_dict=converged_dict);

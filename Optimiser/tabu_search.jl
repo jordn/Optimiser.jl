@@ -37,11 +37,11 @@ function tabu_search(f::Function,
   end
 
   function update_memory(x, v)
+
     # Short Term Memory records last N locations
-    if length(stm) == STM_SIZE
-      shift!(stm)
-    end
-    stm = [stm; (x, v)] # Equivalent to push! but handles the unintialised array
+    #
+    stm = [(x, v); stm]
+    stm = stm[1:min(end, STM_SIZE)]
 
     function add_distinct_point(x,v)
       close_to_existing_point = false
@@ -86,7 +86,7 @@ function tabu_search(f::Function,
   end
 
   function allowed(x)
-    seen = x in [pt[1] for pt in stm[max(1,end-STM_SIZE):end]]
+    seen = x in [pt[1] for pt in stm]
     return !seen && within_constraints(x)
   end
 
@@ -120,18 +120,18 @@ function tabu_search(f::Function,
   const TRIGGER_INTENSIFICATION = 10 # number of iteraions without MTM changing
   const TRIGGER_DIVERSIFICATION = 15
   const TRIGGER_STEP_SIZE_REDUCTION = 25 # number of iteraions without MTM changing
-  const STEP_SIZE_MULTIPLIER = 0.5
-  const INITIAL_STEP_SIZE = 0.08
+  const STEP_SIZE_MULTIPLIER = 0.1
+  const INITIAL_STEP_SIZE = 1.0
   const DISSIMILARITY_FLAG = false
-  const distance_threshold = 0.01 # Distance below which points are "close"
-  const similar_threshold = 0.0005 # Points are similar, keep best.
+  const distance_threshold = 0.05 # Distance below which points are "close"
+  const similar_threshold = 0.004 # Points are similar, keep best.
 
   stm = Vector[] # Short Term Memory (records last N locations)
   mtm = Vector[] # Medium Term Memory (records the N best solutions)
   ltm = Array(Float64,dims,0) # Long Term Memory records all x
-  log = Array(Float64,MTM_SIZE,0)
+  log_vals = Array(Float64,MTM_SIZE,0)
+  log_f_evals = []
 
-  # TODO, use hyperparmeters to sat figure save name
   hypers = [STM_SIZE, MTM_SIZE, TRIGGER_INTENSIFICATION, TRIGGER_DIVERSIFICATION,
     TRIGGER_STEP_SIZE_REDUCTION, STEP_SIZE_MULTIPLIER, INITIAL_STEP_SIZE]
 
@@ -139,16 +139,15 @@ function tabu_search(f::Function,
   step_size = ones(dims)*INITIAL_STEP_SIZE
   x_base = x0
   v_base = f(x_base)
+  f_evals = 1
+  update_memory(x_base, v_base)
   iteration = 0
   counter = 0
-  f_evals = 1
 
   converged_dict = create_converged_dict(x_tol=x_tol, f_tol=f_tol)
 
   while true
-    # Startof each loop witha new base point
-    update_memory(x_base, v_base)
-
+    # Start of each loop with a new x_base point, and accurate v_base
     iteration += 1
     v_base = f(x_base)
     f_evals += 1
@@ -157,13 +156,14 @@ function tabu_search(f::Function,
     if plot
       fig, ax2 = plot_tabu(f, x_range, stm, mtm, ltm, iteration; name="tabu")
       # ax2[:plot](x_base[1], x_base[2], "o--", color="r")
-      if iteration%10 == 0
+      if iteration%1 == 0
         savefig(@sprintf "figs/tabu-%s-%s-%04d.pdf" symbol(f) join(hypers, "-") iteration)
       end
     end
     if logging
       mtm_vals = [pt[2] for pt in mtm]
-      log = [log pad(mtm_vals, MTM_SIZE, NaN)] # Log MTM over time
+      log_vals = [log_vals pad(mtm_vals, MTM_SIZE, NaN)] # Log MTM over time
+      log_f_evals = [log_f_evals; f_evals]
     end
 
     x_steps = Array(Float64,2,0)
@@ -184,8 +184,7 @@ function tabu_search(f::Function,
       # Select best direction
       v_current, index = findmin(v_steps)
       x_current = x_steps[:,index]
-      update_memory(x_current, v_current)   # TODO? put this here?
-
+      update_memory(x_current, v_current)
       # Pattern move
       if v_current < v_base
         x_test = x_current + x_current - x_base
@@ -210,18 +209,21 @@ function tabu_search(f::Function,
       x_current = mean([pt[1] for pt in mtm])
       v_current = f(x_current)
       f_evals += 1
+      update_memory(x_current, v_current)
     elseif counter == TRIGGER_DIVERSIFICATION
       x_current = diversify(ltm)
       v_current = f(x_current)
       f_evals += 1
+      update_memory(x_current, v_current)
     elseif counter == TRIGGER_STEP_SIZE_REDUCTION
       step_size = step_size .* STEP_SIZE_MULTIPLIER
       x_current = mtm[1][1]
       v_current = mtm[1][2]
+      update_memory(x_current, v_current)
       counter = 0
     end
 
-    x_base, v_base = x_current, v_current
+    x_base, v_base = copy(x_current), copy(v_current)
     convergence!(converged_dict; x_step=step_size)
     converged_dict["converged"] && break;
     f_evals >= max_f_evals && break;
@@ -230,5 +232,8 @@ function tabu_search(f::Function,
   end
 
   return summarise(mtm, f_evals, toq();
-                  converged_dict=converged_dict, log=log, x_initial=x0)
+                  converged_dict=converged_dict,
+                  x_initial=x0,
+                  log_vals=log_vals,
+                  log_f_evals=log_f_evals,)
 end

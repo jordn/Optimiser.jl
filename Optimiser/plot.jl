@@ -35,7 +35,7 @@ function plot_contour(f, x_range;
   ylabel("x_2")
   zlabel("f(x)")
   title(@sprintf "Surface plot of %s" symbol(f))
-  savefig(@sprintf "figs/%s-%s-0.pdf" name symbol(f))
+  savefig(@sprintf "figs/surface-%s.pdf" symbol(f))
 
   fig2 = figure("contourplot")
   # ax2 = fig2[:add_axes]()
@@ -82,10 +82,8 @@ function plot_tabu(f, x_range, stm, mtm, ltm, iteration;
   title(@sprintf "Contour plot of %s" symbol(f))
   tight_layout()
 
-  for i in 1:size(ltm,2)
-    ax2[:plot](ltm[1,i], ltm[2,i], "x", color=[0.1,0.1,0.1], markersize=13)
-  end
 
+  ax2[:plot](ltm[1,:], ltm[2,:], "x", color=[0.1,0.1,0.1], markersize=13)
   for pt in stm
     ax2[:plot](pt[1][1], pt[1][2], "o", color="k", markersize=11)
   end
@@ -94,8 +92,6 @@ function plot_tabu(f, x_range, stm, mtm, ltm, iteration;
   end
   return fig2, ax2
 end
-
-
 
 
 function plot_line(f, x_range::Vector; name="line")
@@ -169,12 +165,12 @@ function plot_mtms(summaries; name="mtm", known_minimum=NaN)
   close("mtm")
   runs = length(summaries)
   fig = figure("mtm")
-  MTM_SIZE = size(summaries[1]["log"],1)
+  MTM_SIZE = size(summaries[1]["log_vals"],1)
   ax = fig[:add_axes](hold=true)
-  most_iterations = 0
+  most_f_evals = 0
   for s in summaries
     mtm = s["log"]
-    most_iterations = maximum([most_iterations, size(mtm,2)])
+    most_f_evals = maximum([most_f_evals, size(mtm,2)])
     plot(1:size(mtm,2), mtm[2:end,:]', linewidth=1.0, color=(0.678, 0.675, 0.678), alpha=0.4)
   end
   # Plot best in red, on top of the others.
@@ -182,10 +178,10 @@ function plot_mtms(summaries; name="mtm", known_minimum=NaN)
     best_vals = vec(s["log"][1,:])
     plot(1:length(best_vals), best_vals, linewidth=1.0, color=(1, 0.4, 0.4), alpha=0.6)
   end
-  range = 1:most_iterations # iterations we care about
+  range = 1:most_f_evals # iterations we care about
 
   if !isnan(known_minimum)
-    plot(range, repmat([known_minimum], most_iterations))
+    plot(range, repmat([known_minimum], most_f_evals))
     yticks([yticks()[1]; known_minimum], [yticks()[2], "x*"])
     ylim(-1.25,1)
   end
@@ -210,22 +206,25 @@ function plot_cumulative_solved(summaries;
   close("cumulative")
   runs = length(summaries)
   fig = figure("cumulative")
-  max_iterations = 500
-  most_iterations = 0
-  range = 1:max_iterations # iterations we care about
-  tally_solved = zeros(max_iterations)
-  tally_close = zeros(max_iterations)
+  max_f_evals = 1000
+  most_f_evals = 0
+  range = 1:max_f_evals # iterations we care about
+  tally_solved = zeros(max_f_evals)
+  tally_close = zeros(max_f_evals)
 
   for s in summaries
-    best_val = s["log"][1,1:min(end,max_iterations)]
-    most_iterations = maximum([most_iterations, length(best_val)])
-    iters_to_solve = findfirst(val -> val<=known_minimum+f_tol, best_val)
-    iters_to_close = findfirst(val -> val<=known_minimum+0.001, best_val)
-    if iters_to_solve != 0
-      tally_solved[iters_to_solve] += 1
+    best_val = s["log_vals"][1,1:min(end,max_f_evals)]
+    f_evals = s["log_f_evals"][1:min(end,max_f_evals)]
+    index_to_solve = findfirst(val -> val<=known_minimum+f_tol, best_val)
+    index_to_close = findfirst(val -> val<=known_minimum+0.001, best_val)
+    if index_to_solve != 0
+      f_evals_to_solve = f_evals[index_to_solve]
+      most_f_evals = maximum([most_f_evals, f_evals_to_solve])
+      tally_solved[f_evals_to_solve] += 1
     end
-    if iters_to_close != 0
-      tally_close[iters_to_close] += 1
+    if index_to_close != 0
+      f_evals_to_close = f_evals[index_to_close]
+      tally_close[f_evals_to_close] += 1
     end
 
   end
@@ -241,8 +240,8 @@ function plot_cumulative_solved(summaries;
   ax[:fill_between](range-1, percent_solved, facecolor=vec(colors[1,:]), alpha=0.3)
   legend(["< 1e-8","< 0.001"])
 
-  xlabel("Iteration", fontsize=15)
-  xlim(range[1], most_iterations)
+  xlabel("Function Evaluations", fontsize=15)
+  xlim(range[1], most_f_evals)
   ylim(0,1)
   # xscale("log")
   ylabel("Global minima found (% of runs)", fontsize=15)

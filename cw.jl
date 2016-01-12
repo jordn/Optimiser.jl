@@ -13,6 +13,7 @@ function multirun(method::Symbol, problem::Symbol=:camel, runs=4)
     known_minimum = -1.031628
   elseif problem == :rosenbrock
     func = rosenbrock
+    known_minimum = 0
     constraints = [-2 2; -2 2]
   end
 
@@ -47,9 +48,9 @@ function multirun(method::Symbol, problem::Symbol=:camel, runs=4)
   toc()
 
 
-  if method == :tabu_search
-    plot_mtms(results, known_minimum=known_minimum)
-  end
+  # if method == :tabu_search
+  #   plot_mtms(results, known_minimum=known_minimum)
+  # end
 
   plot_cumulative_solved(results,
                         known_minimum=known_minimum,

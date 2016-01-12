@@ -20,6 +20,7 @@ function nelder_mead(func::Function,
                     constraints=[],
                     plot=false,
                     logging=false)
+
   tic()
 
   if length(constraints) > 0
@@ -60,6 +61,7 @@ function nelder_mead(func::Function,
   pts = []
 	simplex = []
   log_vals = Array(Float64,n+1,0)
+  log_f_evals = []
 
 	for i = 1:n+1
 		val[i] = f(x[:,i]); f_evals += 1;
@@ -86,7 +88,8 @@ function nelder_mead(func::Function,
 		end
 
     if logging
-      log_vals = [log_vals [pt[2] for pt in simplex]] # Log MTM over time
+       log_vals = [log_vals [pt[2] for pt in simplex]]
+       log_f_evals = [log_f_evals; f_evals]
     end
 
 		# x_bar, the centroid of the n best vertices
@@ -114,6 +117,7 @@ function nelder_mead(func::Function,
 
 		# Contraction
 		if simplex[n][2] <= f_reflection < simplex[n+1][2]
+
 			# Outside contraction
 			x_outside_contraction = x_bar + c_contraction*(x_reflection - x_bar)
 			f_outside_contraction = f(x_outside_contraction); f_evals += 1;
@@ -149,6 +153,7 @@ function nelder_mead(func::Function,
 	end
 
 	return summarise(simplex, f_evals, toq();
-          converged_dict=converged_dict, x_initial=x0, log=log_vals)
+          converged_dict=converged_dict, x_initial=x0,
+          log_vals=log_vals, log_f_evals=log_f_evals)
 
 end
