@@ -164,7 +164,7 @@ function minimise_2d(f::Function,
       ax2[:plot](x[1], x[2], "o--")
       ax2[:plot]([x[1], x[1]+direction[1]], [x[2], x[2]+direction[2]], "--")
       if iterations%100 == 0
-        savefig(@sprintf "figs/%s-%s-%d.png" method symbol(f) iterations)
+        savefig(@sprintf "figs/%s-%s-%d.eps" method symbol(f) iterations)
       end
       sleep(.1)
     end

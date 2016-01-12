@@ -7,19 +7,20 @@ include("utilities.jl")
 using PyPlot
 using StatsBase
 
-function tabu_search(
-  f::Function,
-  x0::Vector{Float64};
-  max_iters=1000,
-  max_f_evals=1000,
-  x_tol=1e-8,
-  f_tol=1e-8,
-  contraints=[],
-  plot=false,
-  logging=false)
+# RNG seed for consistent comparisons
+srand(567)
 
-  # RNG seed for consistent comparisons
-  srand(567)
+function tabu_search(f::Function,
+                    x0::Vector{Float64};
+                    max_iters=1000,
+                    max_f_evals=1000,
+                    x_tol=1e-8,
+                    f_tol=1e-8,
+                    contraints=[],
+                    plot=false,
+                    logging=false)
+
+
   tic()
   dims = length(x0)
 
@@ -100,7 +101,17 @@ function tabu_search(
     wv = WeightVec(sum(tally)-vec(-tally))
     index = sample(wv)
     x1_index, x2_index = ind2sub((length(x1_bins), length(x2_bins)), index)
-    return [x1_bins[x1_index], x2_bins[x2_index]]
+
+    # Add Gaussian noise
+    x1_bin_width = x1_bins[2] - x1_bins[1]
+    x2_bin_width = x2_bins[2] - x2_bins[1]
+    while true
+      x1 = x1_bins[x1_index] + x1_bin_width*randn()
+      x2 = x2_bins[x2_index] + x2_bin_width*randn()
+      if x_range[1,1] <= x1 <= x_range[1,2] && x_range[2,1] <= x2 <= x_range[2,2]
+        return [x1, x2]
+      end
+    end
   end
 
 
@@ -147,7 +158,7 @@ function tabu_search(
       ax1[:plot]([x_base[1]], [x_base[2]], v_base, "o--")
       ax2[:plot](x_base[1], x_base[2], "o--")
       if iteration%100 == 0
-        savefig(@sprintf "figs/tabu-%s-%d.png" symbol(f) iteration)
+        savefig(@sprintf "figs/tabu-%s-%d.eps" symbol(f) iteration)
       end
     end
     if logging
@@ -218,5 +229,5 @@ function tabu_search(
   end
 
   return summarise(mtm, f_evals, toq();
-                  converged_dict=converged_dict, log=log)
+                  converged_dict=converged_dict, log=log, x_initial=x0)
 end

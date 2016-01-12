@@ -5,13 +5,21 @@ include("summarise.jl")
 
 using PyPlot
 
+# RNG seed for consistent comparisons
+srand(567)
+
 # Following the algorithm described in Lagarias et al
 # 'CONVERGENCE PROPERTIES OF THE NELDER–MEAD SIMPLEX METHOD IN LOW DIMENSIONS'
 # http://people.duke.edu/~hpgavin/ce200/Lagarias-98.pdf
-function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000;
-                     x_tol=1e-8, f_tol=1e-8, contraints=[], plot=false)
-  # RNG seed for consistent comparisons
-  srand(567)
+function nelder_mead(f::Function,
+                    x0::Vector{Float64};
+                    max_iters=1000,
+                    max_f_evals=1000,
+                    x_tol=1e-8,
+                    f_tol=1e-8,
+                    contraints=[],
+                    plot=false,
+                    logging=false)
   tic()
 
   if length(contraints) > 0
@@ -40,6 +48,8 @@ function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000;
 
   pts = []
 	simplex = []
+  log_vals = Array(Float64,n+1,0)
+
 	for i = 1:n+1
 		val[i] = f(x[:,i]); f_evals += 1;
 		push!(simplex, (x[:,i], val[i]))
@@ -50,7 +60,6 @@ function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000;
 
     # Sort from best to worst
 		sort!(simplex, by=pt->pt[2])
-
     push!(pts, simplex[1])
 
 		if plot
@@ -59,16 +68,15 @@ function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000;
       v = [pt[2] for pt in simplex]
 			x1, x2 = [x1; x1[1]], [x2; x2[1]] # Add vertex to close simplex
 
-			# if iteration == 10
-			# 	ax[:relim]()
-			# 	autoscale(tight=false)
-			# end
-      # simplex = ax1[:plot](x1, x2, v, "o--")
       ax2[:plot](x1, x2, "o--")
       if iteration%10 == 0
-        savefig(@sprintf "figs/tabu-%s-%d.png" symbol(f) iteration)
+        savefig(@sprintf "figs/tabu-%s-%d.eps" symbol(f) iteration)
       end
 		end
+
+    if logging
+      log_vals = [log_vals [pt[2] for pt in simplex]] # Log MTM over time
+    end
 
 		# x_bar, the centroid of the n best vertices
 		x_bar = sum(pt->pt[1], simplex[1:n])./n
@@ -128,7 +136,8 @@ function nelder_mead(f::Function, x0, max_iters=500, max_f_evals=1000;
     convergence!(converged_dict; x_step=x_dist, f_step=val_dist)
 
 	end
-  elapsed_time = toc()
-	return summarise(simplex, f_evals, elapsed_time; converged_dict=converged_dict)
+
+	return summarise(simplex, f_evals, toq();
+          converged_dict=converged_dict, x_initial=x0, log=log_vals)
 
 end

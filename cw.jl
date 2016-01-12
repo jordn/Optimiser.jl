@@ -1,38 +1,57 @@
-using Optim
-using Gadfly
+# include("Optimiser/optimise.jl")
+include("Optimiser/nelder_mead.jl")
+include("Optimiser/tabu_search.jl")
+include("Optimiser/functions.jl")
+include("Optimiser/plot.jl")
+srand(567) # NB: Include this only once otherwise
 
-include("Optimiser/optimise.jl")
+function multirun(method::Symbol, problem::Symbol=:camel, runs=4)
 
-f(x) = x.^4 .* cos(1./x) + 2x.^4
-g(x) = 4x.^3 .* cos(1./x) + x.^2 .* sin(1./x) + 8x.^3
-# f(x) = x.^2-10x
-# g(x) = 2x-10
-x = collect(-0.1:0.000001881:0.1)
-# plot(x,f(x))
-# plot(-6:0.1:6, f(-6:0.1:6))
-# xa, xb, xc, fa, fb, fc, evals =  bracket(f)
-# xa, xb, xc, fa, fb, fc, evals =  bracket(f,1,-20,21)
-# xa, xb, xc, fa, fb, fc, evals =  bracket(f,1,6,111)
+  if problem == :camel
+    func = camel
+    contraints = [-2 2; -1 1]
+    known_minimum = -1.031628
+  elseif problem == :rosenbrock
+    func = rosenbrock
+    contraints = [-2 2; -2 2]
+  end
 
-# tic()
-# res = optimize(f, -4.0,45)
-# toc()
-# println(res)
-# @time res = optimize(f, -4.0,45)
+  if method == :tabu_search
+    optimiser(x) = tabu_search(func,
+                              x;
+                              max_f_evals=1000,
+                              contraints=contraints,
+                              plot=false,
+                              logging=true)
 
-@time summary = minimise(f, 20, g)
-pts = summary["pts"]
-array = zeros(length(pts), 3)
-for i = 1:length(pts)
-  array[i, 1] = pts[i][1]
-  array[i, 2] = pts[i][2]
-  array[i, 3] = pts[i][3]
+  elseif method == :nelder_mead
+    optimiser(x) = nelder_mead(func,
+                              x;
+                              max_f_evals=1000,
+                              contraints=contraints,
+                              plot=false,
+                              logging=true)
+  end
+
+  tic()
+  results = []
+
+  for i in 1:runs
+    x = [rand(linspace(-2,2)); rand(linspace(-1,1))]
+    summary = optimiser(x)
+    results = [results; summary]
+  end
+
+  toc()
+
+
+  if method == :tabu_search
+    plot_mtms(results, known_minimum=known_minimum)
+  end
+  plot_cumulative_solved(results,
+                        known_minimum=known_minimum,
+                        method=method,
+                        problem=problem)
+
+  return results
 end
-
-# p = plot(x=randn(2000), Geom.histogram(bincount=100))
-# draw(PDF("equation-graph.pdf", 16cm, 12cm), p)
-
-#
-rosenbrock(x) = (1-x[1])^2+100(x[2]-x[1]^2)^2
-@time summary = minimise_multi(rosenbrock , [2, 2], [0, 1])
-summary
