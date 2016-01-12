@@ -233,7 +233,6 @@ function plot_cumulative_solved(summaries;
   percent_solved = cumsum(tally_solved)/runs
   plot(percent_solved, color=vec(colors[1,:]), linewidth=4.0, alpha=0.5)
   ax = gca()
-  set_cmap("YlGnBu_r");
 
   percent_close = cumsum(tally_close)/runs
   ax[:plot](percent_close, color=vec(colors[2,:]))

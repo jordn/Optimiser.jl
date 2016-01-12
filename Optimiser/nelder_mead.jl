@@ -11,30 +11,41 @@ srand(567)
 # Following the algorithm described in Lagarias et al
 # 'CONVERGENCE PROPERTIES OF THE NELDER–MEAD SIMPLEX METHOD IN LOW DIMENSIONS'
 # http://people.duke.edu/~hpgavin/ce200/Lagarias-98.pdf
-function nelder_mead(f::Function,
+function nelder_mead(func::Function,
                     x0::Vector{Float64};
                     max_iters=1000,
                     max_f_evals=1000,
                     x_tol=1e-8,
                     f_tol=1e-8,
-                    contraints=[],
+                    constraints=[],
                     plot=false,
                     logging=false)
   tic()
 
-  if length(contraints) > 0
-    x_range = contraints
+  if length(constraints) > 0
+    x_range = constraints
+    function f(x)
+      for i in length(x)
+        if x[i] < constraints[i,1] || constraints[i,2] < x[i]
+          return func(x) + 1e10 # Outside of bounds, penalise.
+        end
+      end
+      return func(x)
+    end
   else
+    f(x) = func(x)
     x1_max = max(1, abs(x0[1])*2.2)
     x2_max = max(1, abs(x0[2])*2.2)
     x_range = [-x1_max x1_max; -x2_max x2_max]
   end
 
 	if plot
-    fig, ax1, ax2 = plot_contour(f, x_range; name="nm")
+    fig, ax1, ax2 = plot_contour(func, x_range; method="nm")
 	end
 
 	const c_reflection, c_expansion, c_contraction, c_shrink = 1.0, 2.0, 0.5, 0.5
+  hypers = c_reflection, c_expansion, c_contraction, c_shrink
+
   iteration = 0;
   f_evals = 0;
   converged_dict = create_converged_dict(x_tol=x_tol, f_tol=f_tol)
@@ -69,8 +80,8 @@ function nelder_mead(f::Function,
 			x1, x2 = [x1; x1[1]], [x2; x2[1]] # Add vertex to close simplex
 
       ax2[:plot](x1, x2, "o--")
-      if iteration%10 == 0
-        savefig(@sprintf "figs/tabu-%s-%d.pdf" symbol(f) iteration)
+      if iteration%1 == 0
+        savefig(@sprintf "figs/nelder-%s-%s-%04d.pdf" symbol(f) join(hypers, "-") iteration)
       end
 		end
 

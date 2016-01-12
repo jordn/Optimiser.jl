@@ -3,17 +3,17 @@ include("Optimiser/nelder_mead.jl")
 include("Optimiser/tabu_search.jl")
 include("Optimiser/functions.jl")
 include("Optimiser/plot.jl")
-srand(567) # NB: Include this only once otherwise
+srand(567)
 
 function multirun(method::Symbol, problem::Symbol=:camel, runs=4)
 
   if problem == :camel
     func = camel
-    contraints = [-2 2; -1 1]
+    constraints = [-2 2; -1 1]
     known_minimum = -1.031628
   elseif problem == :rosenbrock
     func = rosenbrock
-    contraints = [-2 2; -2 2]
+    constraints = [-2 2; -2 2]
   end
 
   if method == :tabu_search
@@ -21,7 +21,7 @@ function multirun(method::Symbol, problem::Symbol=:camel, runs=4)
     optimiser(x) = tabu_search(func,
                               x;
                               max_f_evals=1000,
-                              contraints=contraints,
+                              constraints=constraints,
                               plot=false,
                               logging=true)
 
@@ -30,7 +30,7 @@ function multirun(method::Symbol, problem::Symbol=:camel, runs=4)
     optimiser(x) = nelder_mead(func,
                               x;
                               max_f_evals=1000,
-                              contraints=contraints,
+                              constraints=constraints,
                               plot=false,
                               logging=true)
   end
@@ -50,7 +50,7 @@ function multirun(method::Symbol, problem::Symbol=:camel, runs=4)
   if method == :tabu_search
     plot_mtms(results, known_minimum=known_minimum)
   end
-  
+
   plot_cumulative_solved(results,
                         known_minimum=known_minimum,
                         method=method_string,

@@ -16,7 +16,7 @@ function tabu_search(f::Function,
                     max_f_evals=1000,
                     x_tol=1e-8,
                     f_tol=1e-8,
-                    contraints=[],
+                    constraints=[],
                     plot=false,
                     logging=false)
 
@@ -24,8 +24,8 @@ function tabu_search(f::Function,
   tic()
   dims = length(x0)
 
-  if length(contraints) > 0
-    x_range = contraints
+  if length(constraints) > 0
+    x_range = constraints
   else
     x1_max = max(1, abs(x0[1])*2.2)
     x2_max = max(1, abs(x0[2])*2.2)
@@ -78,16 +78,16 @@ function tabu_search(f::Function,
     ltm = [ltm x]
   end
 
-  function within_contraints(x)
-    if length(contraints) > 0
-      return minimum(contraints[:,1] .<= x .<= contraints[:,2])
+  function within_constraints(x)
+    if length(constraints) > 0
+      return minimum(constraints[:,1] .<= x .<= constraints[:,2])
     end
     return true
   end
 
   function allowed(x)
     seen = x in [pt[1] for pt in stm[max(1,end-STM_SIZE):end]]
-    return !seen && within_contraints(x)
+    return !seen && within_constraints(x)
   end
 
   function diversify(ltm)
@@ -156,7 +156,6 @@ function tabu_search(f::Function,
 
     if plot
       fig, ax2 = plot_tabu(f, x_range, stm, mtm, ltm, iteration; name="tabu")
-      paud
       # ax2[:plot](x_base[1], x_base[2], "o--", color="r")
       if iteration%10 == 0
         savefig(@sprintf "figs/tabu-%s-%s-%04d.pdf" symbol(f) join(hypers, "-") iteration)

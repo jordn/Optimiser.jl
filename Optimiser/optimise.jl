@@ -120,7 +120,7 @@ function minimise_2d(f::Function,
                      grad_tol=1e-12,
                      max_iterations=100,
                      max_f_evals=1000,
-                     contraints=[],
+                     constraints=[],
                      plot=false)
   tic();
   f_evals = 0; g_evals = 0; iterations = 0;
@@ -129,8 +129,8 @@ function minimise_2d(f::Function,
 
   # PLOT
   if plot
-    if length(contraints) > 0
-      x_range = contraints
+    if length(constraints) > 0
+      x_range = constraints
     else
       x1_max = max(1, abs(x0[1])*2)
       x2_max = max(1, abs(x0[2])*2)
