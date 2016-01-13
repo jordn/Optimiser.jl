@@ -30,7 +30,8 @@ function plot_contour(f, x_range;
     alpha=1, linewidth=0.05)
   tight_layout()
   ax1 = gca()
-  ax1[:contour](x1grid, x2grid, grid, 25, zdir="z", offset=-1, linewidth=1.0, cmap=ColorMap("YlGnBu_r"),)
+  ax1[:contour](x1grid, x2grid, grid, 25, zdir="z", offset=-1,
+    linewidth=1.0, cmap=ColorMap("YlGnBu_r"),)
   xlabel("x_1")
   ylabel("x_2")
   zlabel("f(x)")
@@ -132,9 +133,6 @@ function plot_training(pts; name="training")
   x_steps = [norm(x[i] - x[i-1]) for i in 2:k]
   grad = [norm(grad[i]) for i in 1:k]
 
-  # fig = figure("training", figsize=(6,12))
-  # fig = figure("training")
-  # fig = figure("surfaceplot", figsize=(6,12))
 
   fig, axarr = plt[:subplots](3, sharex=true)
   # fig[:set_size_inches](6, 12)
@@ -158,43 +156,6 @@ function plot_training(pts; name="training")
   tight_layout()
   savefig(@sprintf "figs/%s-0.pdf" name)
   return fig, axarr
-end
-
-
-function plot_mtms(summaries; name="mtm", known_minimum=NaN)
-  close("mtm")
-  runs = length(summaries)
-  fig = figure("mtm")
-  MTM_SIZE = size(summaries[1]["log_vals"],1)
-  ax = fig[:add_axes](hold=true)
-  most_f_evals = 0
-  for s in summaries
-    mtm = s["log"]
-    most_f_evals = maximum([most_f_evals, size(mtm,2)])
-    plot(1:size(mtm,2), mtm[2:end,:]', linewidth=1.0, color=(0.678, 0.675, 0.678), alpha=0.4)
-  end
-  # Plot best in red, on top of the others.
-  for s in summaries
-    best_vals = vec(s["log"][1,:])
-    plot(1:length(best_vals), best_vals, linewidth=1.0, color=(1, 0.4, 0.4), alpha=0.6)
-  end
-  range = 1:most_f_evals # iterations we care about
-
-  if !isnan(known_minimum)
-    plot(range, repmat([known_minimum], most_f_evals))
-    yticks([yticks()[1]; known_minimum], [yticks()[2], "x*"])
-    ylim(-1.25,1)
-  end
-
-  xlabel("iteration")
-  xlim(range[1], range[end])
-  # xscale("log")
-  ylabel("minimum f(x) found")
-
-  title(@sprintf "Best %i values found for %i runs" MTM_SIZE runs)
-  tight_layout()
-  savefig(@sprintf "figs/%s-0.pdf" name)
-  return fig, ax
 end
 
 function plot_cumulative_solved(summaries;

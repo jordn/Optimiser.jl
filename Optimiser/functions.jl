@@ -1,5 +1,6 @@
 multimin(x::Number) = x.^4 .* cos(1 ./ x) + 2 .*x.^4
 multimin_grad(x) = 4x.^3 .* cos(1./x) + x.^2 .* sin(1./x) + 8x.^3
+
 logmultimin(x::Number) = log(multimin(x))
 
 # Takes in two 1D arrays and creates a 2D grid_size

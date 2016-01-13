@@ -45,9 +45,9 @@ function nelder_mead(func::Function,
 	end
 
 	const c_reflection, c_expansion, c_contraction, c_shrink = 1.0, 2.0, 0.5, 0.5
-  hypers = c_reflection, c_expansion, c_contraction, c_shrink
+  params = c_reflection, c_expansion, c_contraction, c_shrink
 
-  iteration = 0;
+  iter = 0;
   f_evals = 0;
   converged_dict = create_converged_dict(x_tol=x_tol, f_tol=f_tol)
 
@@ -68,8 +68,11 @@ function nelder_mead(func::Function,
 		push!(simplex, (x[:,i], val[i]))
 	end
 
-	while !converged_dict["converged"] && iteration <= max_iters && f_evals <= max_f_evals
-		iteration += 1
+	while (!converged_dict["converged"]
+          && iter <= max_iters
+          && f_evals <= max_f_evals)
+
+		iter += 1
 
     # Sort from best to worst
 		sort!(simplex, by=pt->pt[2])
@@ -82,8 +85,10 @@ function nelder_mead(func::Function,
 			x1, x2 = [x1; x1[1]], [x2; x2[1]] # Add vertex to close simplex
 
       ax2[:plot](x1, x2, "o--")
-      if iteration%1 == 0
-        savefig(@sprintf "figs/nelder-%s-%s-%04d.pdf" symbol(f) join(hypers, "-") iteration)
+      if iter%1 == 0
+        savefig(
+          @sprintf "figs/nm-%s-%s-%04d.pdf" symbol(f) join(params,"-") iter
+        )
       end
 		end
 
