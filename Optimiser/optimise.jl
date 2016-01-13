@@ -1,4 +1,4 @@
-using Formatting
+using Debug
 include("plot.jl")
 include("functions.jl")
 include("matrix_functions.jl")
@@ -30,8 +30,9 @@ function gradient_approximator(f::Function, δ=1e-8; dims=1)
   end
 end
 
-"Bracket the minimum of the function."
-function bracket(f::Function, xb=0; xa=xb-(1-1/ϕ), xc=xb+1/ϕ, max_evals=10)
+"Bracket the minimum of the function such that xa < xb < xc and
+    f(xa) > f(xb) < f(xc)"
+function bracket(f::Function, xb=0; xa::Real=xb-(1-1/ϕ), xc::Real=xb+1/ϕ, max_evals::Int=10)
   xa, xb, xc = sort([xa, xb, xc])
 
   fa = f(xa)
@@ -102,20 +103,20 @@ function satisfies_wolfe(pt, new_pt, step_size, direction; strong=true)
 end
 
 function minimise_2d(f::Function,
-                     x0::Vector,
-                     g::Function=gradient_approximator(f;dims=length(x0));
-                     method="steepest_descent",
-                     x_tol=1e-8,
-                     f_tol=1e-8,
-                     grad_tol=1e-12,
-                     max_iterations=100,
-                     max_f_evals=1000,
-                     constraints=[],
-                     plot=false)
+                    x0::Vector,
+                    g::Function=gradient_approximator(f;dims=length(x0));
+                    method="steepest_descent",
+                    x_tol=1e-8,
+                    f_tol=1e-8,
+                    grad_tol=1e-12,
+                    max_iterations=100,
+                    max_f_evals=1000,
+                    constraints=[],
+                    plot=false)
   tic();
   f_evals = 0; g_evals = 0; iterations = 0;
   converged_dict = create_converged_dict(x_tol=x_tol, f_tol=f_tol,
-                                        grad_tol=grad_tol)
+      grad_tol=grad_tol)
 
   # PLOT
   if plot
@@ -168,20 +169,15 @@ function minimise_2d(f::Function,
     f_evals += summary["function_evals"]
     x = x + α*direction # get back real x
     grad = g(x); g_evals += 1
-    # println("step_size: ", α)
-    # println(x , " => ", val )
-    # println( "direction ", direction)
     grad_prev = copy(grad)
     direction_prev = copy(direction)
     pt = (x, val, grad)
     push!(pts, pt)
-    # println()
     converged_dict = convergence!(converged_dict; x_step=α, grad=grad;)
   end
 
   plot_training(pts)
   elapsed_time = toq();
-  # println(pts,"\n", f_evals,"\n", elapsed_time)
   return summarise(pts, f_evals, elapsed_time; converged_dict=converged_dict);
 end
 
@@ -234,7 +230,6 @@ function line_search(
       f_new = f(x_new); f_evals += 1
       g_new = g(x_new); f_evals += 1
       xa, xb, xc, fa, fb, fc = rebracket(xa, xb, xc, x_new, fa, fb, fc, f_new)
-      println("inner loop ", step_size)
       new_pt = (x_new, f_new, g_new)
       satisfies_wolfe(pt, new_pt, step_size, direction) && break
       f_evals <= max_f_evals && break
@@ -254,8 +249,8 @@ end
 
 """ Linear conjugate gradient solver of form Ax = b"""
 function conjugate_gradients(A,b=randn(size(A,1)),x=zeros(length(b));grad_tol=1e-10)
-  r = -(A*x - b) # Analytic gradient/ residual
-  p = r      #
+  r = b-A*x # Analytic gradient/ residual
+  p = r      # Search in direction of residual (steepest descent initially)
   rs_old = r'*r
   pts = []
   pt = (x, 1, r)
@@ -272,8 +267,69 @@ function conjugate_gradients(A,b=randn(size(A,1)),x=zeros(length(b));grad_tol=1e
     p = r+(rs_new/rs_old).*p
     rs_old = rs_new
   end
-  return pts
+  return x
 end
+
+
+@debug function mycg(A, b, x0=zeros(length(b)); grad_tol=1e-10)
+  d = r = b - A*x0 # r = residual error, d = direction = -gradient (initially)
+  x = copy(x0)
+  for i in 1:length(b)
+    Ad, rr= A*d, r'r # Precompute to save precious clock cycles
+
+    α = rr/(d'Ad)    # α is the distance to travel along d
+    x1 = x + α.*d
+    r1 = r - α.*Ad
+    β1 = r1'r1/(rr)  # β coefficient makes d1 conjugate (A-orthogonal) to d
+    println(β1)
+    β1 = r1'*(r1-r)/rr # Alternative Polak and Ribiere method
+    println(β1)
+    d1 = r1 + β1.*d
+
+    r, d, x = r1, d1, x1
+  end
+  return x
+end
+
+
+
+# Original method
+# beta = gradient'*gradient / (gradient_prev'*gradient_prev)
+# Polak and Ribiere method
+# beta = grad'*(grad-grad_prev) / (grad_prev'*grad_prev)
+
+#
+#   α1 =
+#   d = r = b - A*x  # all fist values. d = direction, r = residual = -gradient
+#   α = r'r/(d'A10*d)
+#
+#   for i in 1:length(b)
+#     x1 = x + α.*d
+#     r1 = r - α.*A*d
+#     β1 = r1'r1/(r'r)
+#     d1 = r1 + β1.*d
+#     x, r, d = x1, r1, d1
+#     println(sum(r))
+#   end
+#   return x
+# end
+
+# function x = mycg(A, b=randn(size(A,1)), x=zeros(length(b)), grad_tol=1e-10)
+#   d = r = b - A*x  # all fist values. d = direction, r = residual = -gradient
+#   a = r'r/(d'A*d)
+#
+#   for i in 1:length(b)
+#     x1 = x + a.*d
+#     r1 = r - a.*A*d
+#     B1 = r1'r1/(r'r)
+#     d1 = r1 + B1.*d
+#     x, r, d = x1, r1, d1
+#     println(sum(r))
+#   end
+#   return x
+# end
+
+
 
 function quadratic_conjugate_gradients(A,b=randn(size(A,1)),x0=zeros(length(b)); method="steepest_descent")
   f(x::Vector) = (1/2 * x'*A*x - b'*x)[]
