@@ -1,6 +1,7 @@
 using PyPlot
 include("utilities.jl")
 include("functions.jl")
+srand(567)
 
 function plot_contour(f, x_range;
                       name="contour",
@@ -120,84 +121,104 @@ function plot_line(f::Function, x_range::Vector; title="", name="line")
   return fig, ax
 end
 
-function add_point()
-  runs = [12,54,634,343]
-  for i = 1:length(runs)
-    pts = results[runs[i]]["pts"]
+function plot_training(results; name="training")
+  function add_point(summary)
+
+    pts = summary["pts"]
     first_grad_index = find(pt->pt[3]!=0, pts)[] #First point post bracketting
     pts = pts[first_grad_index:end]
 
     k = length(pts)
+    println(k)
+    println(length(summary["f_evals_log"]))
+    # x_log = summary["x_log"]
+    vals_log = summary["vals_log"]
+    grad_log = summary["grad_log"]
+    f_evals_log = summary["f_evals_log"]
+    grad = [norm(grad_log[:,i]) for i in 1:size(grad_log,2)]
     dims = length(pts[1][1])
     x = Array(Float64,dims,0)
     val = []
-    grad = Array(Float64,dims,0)
+    # grad = Array(Float64,dims,0)
+    #
+    # for pt in pts
+    #   x = [x pt[1]]
+    #   val = push!(val, pt[2])
+    #   grad = [grad pt[3]]
+    # end
+    # x_steps = [norm(x[i] - x[i-1]) for i in 2:k]
 
-    for pt in pts
-      x = [x pt[1]]
-      val = push!(val, pt[2])
-      grad = [grad pt[3]]
-    end
-    x_steps = [norm(x[i] - x[i-1]) for i in 2:k]
-    grad = [norm(grad[i]) for i in 1:k]
-
-    axarr[1][:plot](2:k, x_steps, "x-", linewidth=2.0, color=colors[i])
-    axarr[2][:plot](1:k, val, "x-", linewidth=2.0, color=colors[i])
-    if minimum(val) > 0
-      axarr[2][:set_yscale]("log")
-      axarr[2][:set_ylabel]("f(x) [log scale]")
+    # axarr[3][:plot](2:k, x_steps, "x-", linewidth=2.0, color=colors[i])
+    axarr[1][:plot](f_evals_log, vals_log, "-", linewidth=2.0, color=colors[col_ind+=1])
+    if minimum(vals_log) > 0
+      axarr[1][:set_yscale]("log")
+      axarr[1][:set_ylabel]("f(x) [log scale]")
     else
-      axarr[2][:set_ylabel]("f(x)")
+      axarr[1][:set_ylabel]("f(x)")
     end
-    axarr[3][:plot](1:k, grad, "x-", linewidth=2.0, color=colors[i])
+    axarr[2][:plot](f_evals_log, grad, "-", linewidth=2.0, color=colors[col_ind])
   end
-  savefig(@sprintf "figs/multimin-training-extra.pdf")
 
-end
-
-function plot_training(results; name="training")
-
-  pts = results[242]["pts"]
-  first_grad_index = find(pt->pt[3]!=0, pts)[] #First point post bracketting
-  pts = pts[first_grad_index:end]
-
-  k = length(pts)
+  runs = length(results)
+  summary = results[rand(1:runs)]
+  pts = summary["pts"]
+  # first_grad_index = find(pt->pt[3]!=0, pts)[] #First point post bracketting
+  # pts = pts[1:end]
+  method = summary["method"]
+  # k = length(pts)
   dims = length(pts[1][1])
   x = Array(Float64,dims,0)
   val = []
   grad = Array(Float64,dims,0)
 
-  for pt in pts
-    x = [x pt[1]]
-    val = push!(val, pt[2])
-    grad = [grad pt[3]]
+  vals_log = summary["vals_log"]
+  f_evals_log = summary["f_evals_log"]
+
+  if haskey(summary, "grad_log")
+    grad_log = summary["grad_log"]
+    grad = [norm(grad_log[:,i]) for i in 1:size(grad_log,2)]
   end
-  x_steps = [norm(x[i] - x[i-1]) for i in 2:k]
-  grad = [norm(grad[i]) for i in 1:k]
 
-  fig, axarr = plt[:subplots](3, sharex=true)
-  # fig[:set_size_inches](6, 12)
-  axarr[1][:plot](2:k, x_steps, "x-", linewidth=2.0, color=(0.4,0.4,0.4))
-  axarr[1][:set_ylabel]("\Delta x")
 
-  axarr[2][:plot](1:k, val, "x-", linewidth=2.0, color=(0.4,0.4,0.4))
-  if minimum(val) > 0
-    axarr[2][:set_yscale]("log")
-    axarr[2][:set_ylabel]("f(x) [log scale]")
+  # # for pt in pts
+  # #   x = [x pt[1]]
+  # #   val = push!(val, pt[2])
+  # #   grad = [grad pt[3]]
+  # # end
+  # x_steps = [norm(x[i] - x[i-1]) for i in 2:k]
+  # grad = [norm(grad[i]) for i in 1:k]
+  if haskey(summary, "grad_log")
+    fig, axarr = plt[:subplots](2, sharex=true)
   else
-    axarr[2][:set_ylabel]("f(x)")
+    fig, axarr = plt[:subplots](1, sharex=true)
+  end
+  col_ind = 0
+  # axarr[3][:plot](2:k, x_steps, "-", linewidth=2.0, color=(0.4,0.4,0.4))
+  # axarr[3][:set_ylabel]("\Delta x")
+
+  axarr[1][:plot](f_evals_log, vals_log, "-", linewidth=2.0, color=colors[col_ind+=1])
+  if minimum(vals_log) > 0
+    axarr[1][:set_yscale]("log", fontsize=13)
+    axarr[1][:set_ylabel]("f(x) [log scale]", fontsize=13)
+  else
+    axarr[1][:set_ylabel]("f(x)")
   end
 
-  axarr[3][:plot](1:k, grad, "x-", linewidth=2.0, color=(0.4,0.4,0.4))
-  axarr[3][:set_ylabel]("gradient [log scale]")
-  axarr[3][:set_yscale]("log")
-  xlabel("iteration")
+  if haskey(summary, "grad_log")
+    axarr[2][:plot](f_evals_log, grad, "-", linewidth=2.0, color=colors[col_ind])
+    axarr[2][:set_ylabel]("gradient [log scale]", fontsize=13)
+    axarr[2][:set_yscale]("log")
+  end
 
-  axarr[1][:set_title](@sprintf "%s" name)
+  xlabel("Function evaluations", fontsize=15)
+  axarr[1][:set_title](@sprintf "%s" method)
   tight_layout()
   hold("on")
-  savefig(@sprintf "figs/%s-0.pdf" name)
-  add_point()
+  for i = 1:3
+    summary = results[rand(1:runs)]
+    add_point(summary)
+  end
+  savefig(@sprintf "figs/%s-%s-0.pdf" method name)
   return fig, axarr
 end
 
@@ -259,6 +280,46 @@ function plot_cumulative_solved(summaries;
   return fig, ax
 end
 
+
+function plot_gradient(results, title_string="")
+
+  runs = length(results)
+
+  max_width = 0
+  for i in 1:runs
+    max_width = maximum([max_width, length(results[i]["pts"])])
+  end
+
+  # plot(f_evals_log, grad, "-", linewidth=2.0, color=colors[col_ind])
+  # axarr[2][:set_ylabel]("gradient [log scale]", fontsize=13)
+  # axarr[2][:set_yscale]("log")
+
+  f_runs = reshape(pad([], runs*max_width, NaN), runs, max_width)
+  g_runs = reshape(pad([], runs*max_width, NaN), runs, max_width)
+
+  for i in 1:runs
+    result = results[i]
+    pts = result["pts"]
+    for j = 1:length(pts)
+      f_runs[i,j] = pts[j][2]
+      g_runs[i,j] = norm(pts[j][3])
+    end
+  end
+  close("all")
+
+  for i in 1:runs
+    plot(g_runs[i,:]',
+      linewidth=2.0, color=colors[i%length(colors)+1], hold=true)
+  end
+  # plot(g_runs', hold=true)
+  ax = gca();
+  ax[:set_xlabel]("function evaluations", fontsize=15)
+  ax[:set_ylabel]("gradient [log scale]", fontsize=15)
+  ax[:set_yscale]("log")
+  tight_layout()
+  savefig(@sprintf "figs/%s.pdf" lowercase(replace(title_string, " ", "-")))
+  return ax
+end
 
 
 function plot_startpoints(results, f::Function; name="training")

@@ -159,7 +159,7 @@ function nelder_mead(func::Function,
 
 	end
 
-	return summarise(simplex, f_evals, toq();
+	return summarise(simplex, f_evals, toq(); method=:nelder_mead,
           converged_dict=converged_dict, x_initial=x0,
           vals_log=vals_log, f_evals_log=f_evals_log)
 

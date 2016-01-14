@@ -1,6 +1,7 @@
 include("Optimiser/optimise.jl")
 include("Optimiser/functions.jl")
 # include("Optimiser/nelder_mead.jl")
+# include("Optimiser/nelder_mead.jl")
 # include("Optimiser/tabu_search.jl")
 include("Optimiser/plot.jl")
 srand(567)
@@ -41,7 +42,16 @@ function testmulti(method::Symbol=:minimise, problem::Symbol=:rosenbrock, runs=1
                             constraints=constraints,
                             plot=false,
                             logging=true)
-  end
+  elseif method == :nelder_mead
+    method_string = "Nelder Mead"
+    optimiser(x) = nelder_mead(func,
+                x;
+                max_f_evals=1000,
+                constraints=constraints,
+                plot=false,
+                logging=true)
+    end
+
   tic()
   results = []
 
@@ -52,11 +62,86 @@ function testmulti(method::Symbol=:minimise, problem::Symbol=:rosenbrock, runs=1
     results = [results; summary]
   end
 
-  tic()
-  plot_cumulative_solved(results,
-                        known_minimum=known_minimum,
-                        method=method_string,
-                        problem=problem)
+  # plot_cumulative_solved(results,
+  #                       known_minimum=known_minimum,
+  #                       method=method_string,
+  #                       problem=problem)
+
+  plot_training(results)
   toc()
+
   return results
+end
+
+
+function quadratic_test(matrix::Symbol=:A10, method::Symbol=:steep, runs=10)
+  include("Optimiser/matrix_functions.jl")
+
+  if matrix == :A10
+    A = A10
+    title="A10"
+  elseif matrix == :A100
+    A = A100
+    title="A100"
+  elseif matrix == :A1000
+    A = A1000
+    title="A1000"
+  elseif matrix == :B10
+    A = B10
+    title="B10"
+  elseif matrix == :B100
+    A = B100
+    title="B100"
+  elseif matrix == :B1000
+    A = B1000
+    title="B1000"
+  end
+
+  b = rand(linspace(-1,1,1000), size(A,1))
+
+  if method == :conjgrad
+    join([title, "-cg"])
+    optimiser(x) = conjgrad(A, b, x)
+  elseif method == :steep
+    join([title, "-sd"])
+    optimiser(x) = steep(A, b, x)
+  elseif method == :goldensection
+    join([title, "-gold"])
+    optimiser(x) = steep(A, b, x)
+  end
+
+
+  results = []
+  max_width = 0
+
+  for i in 1:runs
+    x0 = rand(linspace(-1,1,1000), size(A,1))
+    result = optimiser(x0);
+    results = [results; result]
+  end
+
+  return results
+end
+
+
+function method_comparison(matrix::Symbol=:A10)
+  include("Optimiser/matrix_functions.jl")
+  results = []
+
+  results = [results; quadratic_test(:A10, :steep, 1)]
+  results = [results; quadratic_test(:B10, :steep, 1)]
+  results = [results; quadratic_test(:A10, :conjgrad, 1)]
+  results = [results; quadratic_test(:B10, :conjgrad, 1)]
+
+  ax = plot_gradient(results, "comp")
+  xlim(1,40)
+  legend([
+  "A10 SD",
+  "B10 SD",
+  "A10 CG",
+  "B10 CG",
+  ], loc=0)
+
+  savefig("figs/10matrix-comparison.pdf")
+
 end

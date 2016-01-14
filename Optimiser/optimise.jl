@@ -1,7 +1,7 @@
 # using Debug
 include("plot.jl")
 include("functions.jl")
-# include("matrix_functions.jl")
+include("matrix_functions.jl")
 include("convergence.jl")
 include("summarise.jl")
 
@@ -50,7 +50,7 @@ function bracket(f::Function, xb::Real=0; xa::Real=xb-(1-1/ϕ), xc::Real=xb+1/ϕ
 
   pts = [(xb,fb,0.0)]
   while fb >= fa
-    @printf "(%0.2f, %0.2f, %0.2f) = %0.2f, %0.2f, %0.2f\n" xa xb xc fa fb fc
+    # @printf "(%0.2f, %0.2f, %0.2f) = %0.2f, %0.2f, %0.2f\n" xa xb xc fa fb fc
     xb, xc = xa, xb
     fb, fc = fa, fb
     push!(pts, (xb,fb,0.0))
@@ -139,14 +139,17 @@ function minimise(f::Function,
 
   # TODO, if approximating gradient, each g_eval == 2 * f_eval. Count this.
   pts = []
-  x_log = Array(Float64,length(x0),0)
-  vals_log = []
-  f_evals_log = []
+
+
   x = x0
   val = f(x); f_evals += 1;
   grad = g(x); g_evals += 1
   pt = (x, val, grad)
   push!(pts, pt)
+  x_log = Array(Float64,length(x0),0)
+  vals_log = []
+  grad_log = Array(Float64,length(grad),0)
+  f_evals_log = []
 
   while !converged_dict["converged"] && iter < max_iters && f_evals <= max_f_evals
     iter += 1
@@ -165,8 +168,8 @@ function minimise(f::Function,
       markeredgecolor="w", color=(colors[iter % length(colors)+1]))
       ax2[:plot]([x[1], x[1]+.5direction[1]], [x[2], x[2]+.5direction[2]],
           "--", linewidth=1.5, color=(colors[iter % length(colors)+1]))
-      if iter%100 == 0
-        savefig(@sprintf "figs/%s-%s-%d.pdf" method symbol(f) iter)
+      if iter < 10 || iter%20 == 0
+        savefig(@sprintf "figs/m%s-%s-%04d.pdf" method symbol(f) iter)
       end
       sleep(.1)
     end
@@ -174,6 +177,7 @@ function minimise(f::Function,
     if logging
       x_log = [x_log x]
       vals_log = [vals_log; val]
+      grad_log = [grad_log grad]
       f_evals_log = [f_evals_log; f_evals]
     end
 
@@ -195,8 +199,8 @@ function minimise(f::Function,
 
   elapsed_time = toq();
   return summarise(pts, f_evals, elapsed_time; converged_dict=converged_dict,
-    x_initial=x0, x_log=x_log, vals_log=vals_log, f_evals_log=f_evals_log);
-
+    x_initial=x0, x_log=x_log, vals_log=vals_log, f_evals_log=f_evals_log,
+    method=method, grad_log=grad_log);
 end
 
 
@@ -258,92 +262,65 @@ function line_search(f::Function, x0::Number=0,
     push!(pts, pt)
 
   end
-  return summarise(pts, f_evals, toq();
+  if f_evals < 10 || f_evals %20 == 0
+    savefig(@sprintf "figs/line%s-%04d.pdf" symbol(f) f_evals)
+  end
+  return summarise(pts, f_evals, toq(); method=:line_search,
    converged_dict=converged_dict, x_initial=x0);
 end
 
-""" Linear conjugate gradient solver of form Ax = b"""
-function conjugate_gradients(A,b=randn(size(A,1)),x=zeros(length(b));grad_tol=1e-10)
-  r = b-A*x # Analytic gradient/ residual
-  p = r      # Search in direction of residual (steepest descent initially)
-  rs_old = r'*r
-  pts = []
-  pt = (x, 1, r)
-  push!(pts, pt)
-  for i = 1:length(b)*6
-    Ap = A*p
-    alpha = rs_old/(p'*Ap)
-    x = x + alpha.*p
-    r = r-alpha.*Ap
-    rs_new = r'*r
-    pt = (x,1,r)
-    push!(pts, pt)
-    sqrt(rs_new[]) <= grad_tol && break
-    p = r+(rs_new/rs_old).*p
-    rs_old = rs_new
+""" Linear conjugate gradient solver of quadratic forms"""
+function conjgrad(A, b, x0=zeros(length(b));
+   grad_tol=1e-10, method=:polak)
+
+  tic(); pts = []; f_evals=0;
+  f(x) = (1/2*x'A*x - b'x)[] # Treat as scalar rather than 1x1 matrix
+
+  if method == :polak
+    β(r, r1) = r1'*(r1-r)/r'r # Polak and Ribiere method, often performs better
+  else
+    β(r, r1) = r1'r1/(rr) # The 'classic'
   end
-  return x
-end
 
-
-function mycg(A, b, x0=zeros(length(b)); grad_tol=1e-10)
-  d = r = b - A*x0 # r = residual error, d = direction = -gradient (initially)
   x = copy(x0)
-  for i in 1:length(b)
-    Ad, rr= A*d, r'r # Precompute to save precious clock cycles
 
-    α = rr/(d'Ad)    # α is the distance to travel along d
+  d = r = b - A*x # r = residual error, d = direction = -gradient (initially)
+  while abs(norm(d)) > grad_tol || f_evals <= 40
+    pts = [pts; (x, f(x), -d)];
+    f_evals += 1
+    Ad = A*d        # Precompute to save precious clock cycles
+
+    α = r'r/(d'Ad)  # α is the "exact" distance to travel along d
     x1 = x + α.*d
     r1 = r - α.*Ad
-    β1 = r1'r1/(rr)  # β coefficient makes d1 conjugate (A-orthogonal) to d
-    println(β1)
-    β1 = r1'*(r1-r)/rr # Alternative Polak and Ribiere method
-    println(β1)
+    β1 = β(r,r1)    # β coefficient makes d1 conjugate (A-orthogonal) to d
     d1 = r1 + β1.*d
 
     r, d, x = r1, d1, x1
   end
-  return x
+
+  return summarise(pts, f_evals, toq(), method=method, x_initial=x0)
 end
 
+""" Linear conjugate gradient solver of quadratic forms"""
+function steep(A, b, x0=zeros(length(b));
+   grad_tol=1e-10)
 
+  tic(); pts = []; f_evals=0;
+  f(x) = (1/2*x'A*x - b'x)[] # Treat as scalar rather than 1x1 matrix
 
-# Original method
-# beta = gradient'*gradient / (gradient_prev'*gradient_prev)
-# Polak and Ribiere method
-# beta = grad'*(grad-grad_prev) / (grad_prev'*grad_prev)
+  x = copy(x0)
+  r = b - A*x # r = residual error, d = direction = -gradient (initially)
+  while abs(norm(r)) > grad_tol && f_evals < 100 || f_evals <= 40
+    pts = [pts; (x, f(x), -r)];
+    f_evals += 1
+    r = b - A*x
+    α = r'r/(r'A*r)  # α is the "exact" distance to travel along d
+    x = x + α.*r
+  end
 
-#
-#   α1 =
-#   d = r = b - A*x  # all fist values. d = direction, r = residual = -gradient
-#   α = r'r/(d'A10*d)
-#
-#   for i in 1:length(b)
-#     x1 = x + α.*d
-#     r1 = r - α.*A*d
-#     β1 = r1'r1/(r'r)
-#     d1 = r1 + β1.*d
-#     x, r, d = x1, r1, d1
-#     println(sum(r))
-#   end
-#   return x
-# end
-
-# function x = mycg(A, b=randn(size(A,1)), x=zeros(length(b)), grad_tol=1e-10)
-#   d = r = b - A*x  # all fist values. d = direction, r = residual = -gradient
-#   a = r'r/(d'A*d)
-#
-#   for i in 1:length(b)
-#     x1 = x + a.*d
-#     r1 = r - a.*A*d
-#     B1 = r1'r1/(r'r)
-#     d1 = r1 + B1.*d
-#     x, r, d = x1, r1, d1
-#     println(sum(r))
-#   end
-#   return x
-# end
-
+  return summarise(pts, f_evals, toq(), x_initial=x0)
+end
 
 
 function quadratic_conjugate_gradients(A,b=randn(size(A,1)),x0=zeros(length(b)); method="steepest_descent")
