@@ -137,36 +137,26 @@ function minimise(f::Function,
     fig, ax1, ax2 = plot_contour(f, x_range; name=method, problem="rosenbrock")
   end
 
-  # TODO, if approximating gradient, each g_eval == 2 * f_eval. Count this.
   pts = []
-
-
-  x = x0
+  x = copy(x0)
   val = f(x); f_evals += 1;
   grad = g(x); g_evals += 1
-  pt = (x, val, grad)
-  push!(pts, pt)
+  pts = [pts; (x, val, grad)]
   x_log = Array(Float64,length(x0),0)
   vals_log = []
   grad_log = Array(Float64,length(grad),0)
   f_evals_log = []
 
+  direction = -grad
+
   while !converged_dict["converged"] && iter < max_iters && f_evals <= max_f_evals
     iter += 1
-    if method == "steepest_descent" || iter == 1
-      direction = -normalise(grad) #Steepest descent
-    elseif method == "conjugate_gradients"
-      # Original method
-      # beta = gradient'*gradient / (gradient_prev'*gradient_prev)
-      # Polak and Ribiere method
-      beta = grad'*(grad-grad_prev) / (grad_prev'*grad_prev)
-      direction = normalise(beta[]*direction_prev - grad)
-    end
 
     if plot
       ax2[:plot](x[1], x[2], "o", markersize=14, markeredgewidth=1,
       markeredgecolor="w", color=(colors[iter % length(colors)+1]))
-      ax2[:plot]([x[1], x[1]+.5direction[1]], [x[2], x[2]+.5direction[2]],
+      arrow = 0.5 * normalise(direction)
+      ax2[:plot]([x[1], x[1]+arrow[1]], [x[2], x[2]+arrow[2]],
           "--", linewidth=1.5, color=(colors[iter % length(colors)+1]))
       if iter < 10 || iter%20 == 0
         savefig(@sprintf "figs/m%s-%s-%04d.pdf" method symbol(f) iter)
@@ -181,19 +171,32 @@ function minimise(f::Function,
       f_evals_log = [f_evals_log; f_evals]
     end
 
-    # Line search in direction with step_size α
-    f_line(α) = f(x + α*direction)
-    summary = line_search(f_line, 0, max_f_evals=max_f_evals-f_evals;
-                          x_tol=1e-3, f_tol=1e-4, plot=false, direction=1)
-    α = summary["x"]
-    val = summary["min_value"]
-    f_evals += summary["function_evals"]
-    x = x + α*direction # get back real x
     grad = g(x); g_evals += 1
-    grad_prev = copy(grad)
-    direction_prev = copy(direction)
-    pt = (x, val, grad)
-    push!(pts, pt)
+    direction = -grad
+
+    # Line search in direction d with step_size α
+    f_line(α) = f(x + α*direction)
+    line_summary = line_search(f_line, 0, max_f_evals=max_f_evals-f_evals;
+                          x_tol=1e-6, f_tol=1e-4, plot=false, direction=1)
+    println(line_summary)
+    α = line_summary["x"]
+    val = line_summary["min_value"]
+    f_evals += line_summary["function_evals"]
+
+    x = x + α.*direction        # get back real x
+    #
+    # grad1 = g(x1); g_evals += 1
+    #
+    # if method == "conjugate_gradients"
+    #   r1 = -grad1
+    #   β1 = r1'r1/(r'r)
+    #   d1 = r1 + β1.*direction
+    # elseif method == "steepest_descent"
+    #   d1 = -grad1
+    # end
+    # direction = d1
+    # grad, x = grad1, x1
+    push!(pts, (x, val, grad))
     converged_dict = convergence!(converged_dict; x_step=α, grad=grad;)
   end
 
@@ -203,7 +206,7 @@ function minimise(f::Function,
     method=method, grad_log=grad_log);
 end
 
-
+""" Perform a one dimensional line search by golden section """
 function line_search(f::Function, x0::Number=0,
     g::Function=gradient_approximator(f);
     direction=0, x_tol=1e-8, f_tol=1e-8,
@@ -252,9 +255,10 @@ function line_search(f::Function, x0::Number=0,
       step_size <= x_tol && break
       f_evals >= max_f_evals && break
       step_size = step_size*(2-ϕ) # Reduce step size
+      println(x_new)
     end
-    # println("Line search took ", f_evals,
-      # " evaluations (Bracketing: ", bracket_f_evals,  ")")
+    println("Line search took ", f_evals,
+      " evaluations (Bracketing: ", bracket_f_evals,  ")")
 
     convergence!(converged_dict; x_step=step_size, grad=grad)
     grad = g(xb); g_evals += 1
@@ -269,9 +273,10 @@ function line_search(f::Function, x0::Number=0,
    converged_dict=converged_dict, x_initial=x0);
 end
 
-""" Linear conjugate gradient solver of quadratic forms"""
+
+""" Conjugate gradient solver of quadratic forms"""
 function conjgrad(A, b, x0=zeros(length(b));
-   grad_tol=1e-10, method=:polak)
+   max_f_evals=1000, grad_tol=1e-10, method=:polak)
 
   tic(); pts = []; f_evals=0;
   f(x) = (1/2*x'A*x - b'x)[] # Treat as scalar rather than 1x1 matrix
@@ -279,12 +284,12 @@ function conjgrad(A, b, x0=zeros(length(b));
   if method == :polak
     β(r, r1) = r1'*(r1-r)/r'r # Polak and Ribiere method, often performs better
   else
-    β(r, r1) = r1'r1/(rr) # The 'classic'
+    β(r, r1) = r1'r1/(r'r)    # The 'classic'
   end
 
   x = copy(x0)
-
   d = r = b - A*x # r = residual error, d = direction = -gradient (initially)
+
   while abs(norm(d)) > grad_tol || f_evals <= 40
     pts = [pts; (x, f(x), -d)];
     f_evals += 1
@@ -302,35 +307,43 @@ function conjgrad(A, b, x0=zeros(length(b));
   return summarise(pts, f_evals, toq(), method=method, x_initial=x0)
 end
 
-""" Linear conjugate gradient solver of quadratic forms"""
-function steep(A, b, x0=zeros(length(b));
-   grad_tol=1e-10)
 
+""" Steepest descent solver of quadratic forms"""
+function steepdesc(A, b, x0=zeros(length(b));
+   max_f_evals=1000, grad_tol=1e-10)
+
+  converged_dict = create_converged_dict(grad_tol=grad_tol)
   tic(); pts = []; f_evals=0;
   f(x) = (1/2*x'A*x - b'x)[] # Treat as scalar rather than 1x1 matrix
-
   x = copy(x0)
-  r = b - A*x # r = residual error, d = direction = -gradient (initially)
-  while abs(norm(r)) > grad_tol && f_evals < 100 || f_evals <= 40
+
+  while true
+    r = b - A*x      # r = residual error = -gradient
+    α = r'r/(r'A*r)  # α is distance s.t. gradient at next x is orthogonal
+    x = x + α.*r
+
     pts = [pts; (x, f(x), -r)];
     f_evals += 1
-    r = b - A*x
-    α = r'r/(r'A*r)  # α is the "exact" distance to travel along d
-    x = x + α.*r
+    convergence!(converged_dict;  grad=norm(r))
+    converged_dict["converged"] && break
+    f_evals > max_f_evals && break
   end
 
-  return summarise(pts, f_evals, toq(), x_initial=x0)
+  return summarise(pts, f_evals, toq(), converged_dict=converged_dict,
+  x_initial=x0)
 end
 
 
-function quadratic_conjugate_gradients(A,b=randn(size(A,1)),x0=zeros(length(b)); method="steepest_descent")
+
+""" Steepest descent solver of quadratic forms"""
+function goldensection(A, b, x0=zeros(length(b)))
   f(x::Vector) = (1/2 * x'*A*x - b'*x)[]
   g(x::Vector) = vec(A*x - b)
   tic();
-  summary = minimise(f,x0,g,method="conjugate_gradients")
+
+  summary = minimise(f, x0, g, method="steepest_descent", max_f_evals=5000)
   println(summary["x"])
   elapsed_time = toq();
   return summary
-  # println(pts,"\n", f_evals,"\n", elapsed_time)
-  # return summarise(pts, f_evals, elapsed_time)
+
 end
