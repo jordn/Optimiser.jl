@@ -23,3 +23,40 @@ end
 
 
 # plot_line(multimin, x_range=[-0.1,0.1]; title="x^4*cos(1/x) + 2x^4", name="line")
+
+function testmulti(method::Symbol=:minimise, problem::Symbol=:rosenbrock, runs=1)
+
+  if problem == :rosenbrock
+    func = rosenbrock
+    start_x = [-0.35,-1.68]
+    constraints = [-1.5 1.5; -2 3]
+    known_minimum = 0
+  end
+
+  if method == :minimise
+    method_string = "Gradient"
+    optimiser(x) = minimise(func,
+                            x;
+                            max_f_evals=1000,
+                            constraints=constraints,
+                            plot=false,
+                            logging=true)
+  end
+  tic()
+  results = []
+
+  for i in 1:runs
+    x = [rand(linspace(-1.5,1.5)); rand(linspace(-2,3))]
+    println(x)
+    summary = optimiser(x)
+    results = [results; summary]
+  end
+
+  tic()
+  plot_cumulative_solved(results,
+                        known_minimum=known_minimum,
+                        method=method_string,
+                        problem=problem)
+  toc()
+  return results
+end

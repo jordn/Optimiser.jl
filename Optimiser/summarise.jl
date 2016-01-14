@@ -4,8 +4,9 @@ include("convergence.jl")
 function summarise(pts, f_evals, elapsed_time="";
                   g_evals="",
                   converged_dict="",
-                  log_vals=[],
-                  log_f_evals=[],
+                  x_log=[],
+                  vals_log=[],
+                  f_evals_log=[],
                   x_initial=[])
 
   best_pt = pts[length(pts)]
@@ -22,11 +23,14 @@ function summarise(pts, f_evals, elapsed_time="";
     "convergence" => converged_dict,
     "x_initial" => x_initial,
   )
-  if length(log_vals) > 0
-    summary["log_vals"] = log_vals
+  if length(x_log) > 0
+    summary["x_log"] = x_log
   end
-  if length(log_f_evals) > 0
-    summary["log_f_evals"] = log_f_evals
+  if length(vals_log) > 0
+    summary["vals_log"] = vals_log
+  end
+  if length(f_evals_log) > 0
+    summary["f_evals_log"] = f_evals_log
   end
   return summary
 end

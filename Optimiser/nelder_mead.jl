@@ -2,6 +2,7 @@ include("convergence.jl")
 include("functions.jl")
 include("plot.jl")
 include("summarise.jl")
+include("utilities.jl")
 
 using PyPlot
 
@@ -16,7 +17,7 @@ function nelder_mead(func::Function,
                     max_iters=1000,
                     max_f_evals=1000,
                     x_tol=1e-8,
-                    f_tol=1e-8,
+                    f_tol=1e-10,
                     constraints=[],
                     plot=false,
                     logging=false)
@@ -60,14 +61,15 @@ function nelder_mead(func::Function,
 
   pts = []
 	simplex = []
-  log_vals = Array(Float64,n+1,0)
-  log_f_evals = []
+  vals_log = Array(Float64,n+1,0)
+  f_evals_log = []
 
 	for i = 1:n+1
 		val[i] = f(x[:,i]); f_evals += 1;
 		push!(simplex, (x[:,i], val[i]))
 	end
 
+  color_index = 1
 	while (!converged_dict["converged"]
           && iter <= max_iters
           && f_evals <= max_f_evals)
@@ -84,17 +86,17 @@ function nelder_mead(func::Function,
       v = [pt[2] for pt in simplex]
 			x1, x2 = [x1; x1[1]], [x2; x2[1]] # Add vertex to close simplex
 
-      ax2[:plot](x1, x2, "o--")
-      if iter%1 == 0
+      ax2[:plot](x1, x2, "o--", linewidth=2.0, color=(0.4940, 0.1840, 0.5560))
+      if iter < 10 || iter%20 == 0
         savefig(
-          @sprintf "figs/nm-%s-%s-%04d.pdf" symbol(f) join(params,"-") iter
+          @sprintf "figs/nm-g%s-%s-%04d.pdf" symbol(f) join(params,"-") iter
         )
       end
 		end
 
     if logging
-       log_vals = [log_vals [pt[2] for pt in simplex]]
-       log_f_evals = [log_f_evals; f_evals]
+       vals_log = [vals_log [pt[2] for pt in simplex]]
+       f_evals_log = [f_evals_log; f_evals]
     end
 
 		# x_bar, the centroid of the n best vertices
@@ -152,13 +154,13 @@ function nelder_mead(func::Function,
     x = [pt[1] for pt in simplex]
     val = [pt[2] for pt in simplex]
     x_dist = norm(x[end] - x[1])
-    val_dist = norm(val[end] - val[1])
-    convergence!(converged_dict; x_step=x_dist, f_step=val_dist)
+    # val_dist = norm(val[end] - val[1])
+    convergence!(converged_dict; x_step=x_dist)
 
 	end
 
 	return summarise(simplex, f_evals, toq();
           converged_dict=converged_dict, x_initial=x0,
-          log_vals=log_vals, log_f_evals=log_f_evals)
+          vals_log=vals_log, f_evals_log=f_evals_log)
 
 end

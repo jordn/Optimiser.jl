@@ -126,8 +126,8 @@ function tabu_search(f::Function,
   stm = Vector[] # Short Term Memory (records last N locations)
   mtm = Vector[] # Medium Term Memory (records the N best solutions)
   ltm = Array(Float64,dims,0) # Long Term Memory records all x
-  log_vals = Array(Float64,MTM_SIZE,0)
-  log_f_evals = []
+  vals_log = Array(Float64,MTM_SIZE,0)
+  f_evals_log = []
 
   params = [STM_SIZE, MTM_SIZE, K_INTENSIFICATION, K_DIVERSIFICATION,
     K_STEP_SIZE_REDUCTION, STEP_SIZE_MULTIPLIER, INITIAL_STEP_SIZE]
@@ -159,8 +159,8 @@ function tabu_search(f::Function,
     end
     if logging
       mtm_vals = [pt[2] for pt in mtm]
-      log_vals = [log_vals pad(mtm_vals, MTM_SIZE, NaN)] # Log MTM over time
-      log_f_evals = [log_f_evals; f_evals]
+      vals_log = [vals_log pad(mtm_vals, MTM_SIZE, NaN)] # Log MTM over time
+      f_evals_log = [f_evals_log; f_evals]
     end
 
     x_steps = Array(Float64,2,0)
@@ -231,6 +231,6 @@ function tabu_search(f::Function,
   return summarise(mtm, f_evals, toq();
                   converged_dict=converged_dict,
                   x_initial=x0,
-                  log_vals=log_vals,
-                  log_f_evals=log_f_evals,)
+                  vals_log=vals_log,
+                  f_evals_log=f_evals_log,)
 end
