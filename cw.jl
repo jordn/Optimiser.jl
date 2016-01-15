@@ -105,11 +105,16 @@ function quadratic_test(matrix::Symbol=:A10, method::Symbol=:steepdesc, runs=10)
   elseif method == :steepdesc
     join([title, "-sd"])
     optimiser(x) = steepdesc(A, b, x)
-  elseif method == :goldensection
-    join([title, "-gold"])
+  elseif method == :goldenconj
+    join([title, "-goldconj"])
     f(x::Vector) = (1/2 * x'*A*x - b'*x)[]
-    g(x::Vector) = vec(A*x - b)
-    optimiser(x) = minimise(f, x0, g, method="steepest_descent", max_f_evals=5000)
+    g(x::Vector) = A*x - b
+    optimiser(x) = minimise(f, x, g, method="conjugate_gradients", max_f_evals=5000)
+  elseif method == :goldensteep
+    join([title, "-goldsteep"])
+    f(x::Vector) = (1/2 * x'*A*x - b'*x)[]
+    g(x::Vector) = A*x - b
+    optimiser(x) = minimise(f, x, g, method="steepest_descent", max_f_evals=5000)
   end
 
 
@@ -130,24 +135,33 @@ function method_comparison(matrix::Symbol=:A10)
   include("Optimiser/matrix_functions.jl")
   results = []
 
-  results = [results; quadratic_test(:A10, :steepdesc, 1)]
-  results = [results; quadratic_test(:B10, :steepdesc, 1)]
-  results = [results; quadratic_test(:A10, :conjgrad, 1)]
-  results = [results; quadratic_test(:B10, :conjgrad, 1)]
-  results = [results; quadratic_test(:A10, :goldensection, 1)]
-  results = [results; quadratic_test(:B10, :goldensection, 1)]
+  # results = [results; quadratic_test(:A100, :steepdesc, 1)]
+  results = [results; quadratic_test(:B100, :steepdesc, 1)]
+  # results = [results; quadratic_test(:A100, :goldensteep, 1)]
+  results = [results; quadratic_test(:B100, :goldensteep, 1)]
+  # results = [results; quadratic_test(:A1000, :steepdesc, 1)]
+  results = [results; quadratic_test(:B1000, :steepdesc, 1)]
+  # results = [results; quadratic_test(:A1000, :goldensteep, 1)]
+  results = [results; quadratic_test(:B1000, :goldensteep, 1)]
+
+  # results = [results; quadratic_test(:A100, :goldenconj, 1)]
+  # results = [results; quadratic_test(:B100, :goldenconj, 1)]
 
   ax = plot_gradient(results, "comp")
-  xlim(1,40)
+  xlim(1,100)
   legend([
-  "A10 Steepest Descent",
-  "B10 Steepest Descent",
-  "A10 Conjugate Gradients",
-  "B10 Conjugate Gradients",
-  "A10 Golden Section",
-  "B10 Golden Section",
+  # "A100 Exact",
+  "B100 Exact",
+  # "A100 Golden Section",
+  "B100 Golden Section",
+  # "A1000 Exact",
+  "B1000 Exact",
+  # "A1000 Golden Section",
+  "B1000 Golden Section",
+  # "A100 Golden Conj",
+  # "B100 Golden Conj",
   ], loc=0)
 
-  savefig("figs/10matrix-comparison.pdf")
+  savefig("figs/100matrix-comparison-inex3.pdf")
 
 end

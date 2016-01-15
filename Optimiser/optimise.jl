@@ -149,7 +149,7 @@ function minimise(f::Function,
 
   direction = -grad
 
-  while !converged_dict["converged"] && iter < max_iters && f_evals <= max_f_evals
+  while true
     iter += 1
 
     if plot
@@ -172,6 +172,7 @@ function minimise(f::Function,
     end
 
     grad = g(x); g_evals += 1
+
     direction = -grad
 
     # Line search in direction d with step_size α
@@ -184,20 +185,12 @@ function minimise(f::Function,
     f_evals += line_summary["function_evals"]
 
     x = x + α.*direction        # get back real x
-    #
-    # grad1 = g(x1); g_evals += 1
-    #
-    # if method == "conjugate_gradients"
-    #   r1 = -grad1
-    #   β1 = r1'r1/(r'r)
-    #   d1 = r1 + β1.*direction
-    # elseif method == "steepest_descent"
-    #   d1 = -grad1
-    # end
-    # direction = d1
-    # grad, x = grad1, x1
+
     push!(pts, (x, val, grad))
     converged_dict = convergence!(converged_dict; x_step=α, grad=grad;)
+    converged_dict["converged"] && break;
+    iter > max_iters && break
+    f_evals >= max_f_evals && break
   end
 
   elapsed_time = toq();
@@ -216,7 +209,6 @@ function line_search(f::Function, x0::Number=0,
 
   xa, xb, xc, fa, fb, fc, pts, f_evals =  bracket(f, x0; max_evals=max_f_evals)
   bracket_f_evals = f_evals
-
 
   if plot
     fig_line, ax_line = plot_line(f,[xa, xc]; name="line")
@@ -278,6 +270,7 @@ end
 function conjgrad(A, b, x0=zeros(length(b));
    max_f_evals=1000, grad_tol=1e-10, method=:polak)
 
+  converged_dict = create_converged_dict(grad_tol=grad_tol)
   tic(); pts = []; f_evals=0;
   f(x) = (1/2*x'A*x - b'x)[] # Treat as scalar rather than 1x1 matrix
 
@@ -290,9 +283,7 @@ function conjgrad(A, b, x0=zeros(length(b));
   x = copy(x0)
   d = r = b - A*x # r = residual error, d = direction = -gradient (initially)
 
-  while abs(norm(d)) > grad_tol || f_evals <= 40
-    pts = [pts; (x, f(x), -d)];
-    f_evals += 1
+  while true
     Ad = A*d        # Precompute to save precious clock cycles
 
     α = r'r/(d'Ad)  # α is the "exact" distance to travel along d
@@ -302,9 +293,16 @@ function conjgrad(A, b, x0=zeros(length(b));
     d1 = r1 + β1.*d
 
     r, d, x = r1, d1, x1
+
+    pts = [pts; (x, f(x), -r)];
+    f_evals += 1
+    convergence!(converged_dict;  grad=norm(r))
+    abs(norm(d)) < grad_tol && break
+    f_evals > max_f_evals && break
   end
 
-  return summarise(pts, f_evals, toq(), method=method, x_initial=x0)
+  return summarise(pts, f_evals, toq(), method=method,
+    converged_dict=converged_dict,x_initial=x0)
 end
 
 
@@ -318,6 +316,8 @@ function steepdesc(A, b, x0=zeros(length(b));
   x = copy(x0)
 
   while true
+
+
     r = b - A*x      # r = residual error = -gradient
     α = r'r/(r'A*r)  # α is distance s.t. gradient at next x is orthogonal
     x = x + α.*r

@@ -313,7 +313,7 @@ function plot_gradient(results, title_string="")
   end
   # plot(g_runs', hold=true)
   ax = gca();
-  ax[:set_xlabel]("function evaluations", fontsize=15)
+  ax[:set_xlabel]("iterations", fontsize=15)
   ax[:set_ylabel]("gradient [log scale]", fontsize=15)
   ax[:set_yscale]("log")
   tight_layout()
